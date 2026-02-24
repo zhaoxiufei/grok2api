@@ -355,3 +355,8 @@ td.table-empty {
   color: var(--accents-4);
   margin-top: 2px;
 }
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}

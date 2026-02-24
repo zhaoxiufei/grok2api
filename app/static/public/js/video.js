@@ -240,6 +240,25 @@
     imageRemoveBtn.addEventListener('click', (e) => { e.stopPropagation(); removeUploadedImage(); });
   }
 
+  // Clipboard paste support for image upload (single mode → handleImageFile, waterfall mode → handleWfImageFile)
+  document.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        if (currentMode === 'waterfall') {
+          handleWfImageFile(file);
+        } else {
+          handleImageFile(file);
+        }
+        return;
+      }
+    }
+  });
+
   function toast(message, type) {
     if (typeof showToast === 'function') {
       showToast(message, type);
@@ -559,9 +578,9 @@
       return;
     }
 
-    const apiKey = await getChatApiKey();
-    if (apiKey === null) {
-      toast('请先登录后台', 'error');
+    const authKey = await ensurePublicKey();
+    if (authKey === null) {
+      toast('请先登录', 'error');
       return;
     }
 
@@ -574,7 +593,6 @@
     generateStartTime = Date.now();
     abortController = new AbortController();
 
-    const stream = streamToggle ? streamToggle.checked : true;
     const videoConfig = {
       aspect_ratio: ratioSelect ? ratioSelect.value : '3:2',
       video_length: lengthSelect ? parseInt(lengthSelect.value, 10) : 6,
@@ -587,37 +605,43 @@
     setButtons(true);
     showProgress('正在连接服务...');
 
-    const body = {
-      model: 'grok-imagine-1.0-video',
-      messages: [{ role: 'user', content: buildVideoContent(prompt) }],
-      stream: stream,
-      video_config: videoConfig
-    };
-
     try {
-      const res = await fetch('/v1/chat/completions', {
+      // Step 1: Create task via public video API
+      const startBody = {
+        prompt: prompt,
+        aspect_ratio: videoConfig.aspect_ratio,
+        video_length: videoConfig.video_length,
+        resolution_name: videoConfig.resolution_name,
+        preset: videoConfig.preset,
+        image_url: uploadedImageBase64 || undefined
+      };
+      const startRes = await fetch('/v1/public/video/start', {
         method: 'POST',
-        headers: {
-          ...buildAuthHeaders(apiKey),
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(body),
+        headers: { ...buildAuthHeaders(authKey), 'Content-Type': 'application/json' },
+        body: JSON.stringify(startBody),
         signal: abortController.signal
       });
+      if (!startRes.ok) {
+        const errText = await startRes.text();
+        throw new Error(errText || `HTTP ${startRes.status}`);
+      }
+      const startData = await startRes.json();
+      const taskId = startData && startData.task_id ? String(startData.task_id) : '';
+      if (!taskId) throw new Error('Missing task_id');
 
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `HTTP ${res.status}`);
+      // Step 2: Connect to SSE stream
+      const sseRes = await fetch('/v1/public/video/sse?task_id=' + encodeURIComponent(taskId), {
+        signal: abortController.signal
+      });
+      if (!sseRes.ok) {
+        const errText = await sseRes.text();
+        throw new Error(errText || `SSE HTTP ${sseRes.status}`);
       }
 
       setStatus('connected', '生成中...');
       updateProgress('视频生成中，请耐心等待...');
 
-      if (stream) {
-        await handleStreamResponse(res, prompt);
-      } else {
-        await handleNonStreamResponse(res, prompt);
-      }
+      await handleStreamResponse(sseRes, prompt);
     } catch (e) {
       if (e.name === 'AbortError') {
         setStatus('', '已停止');
@@ -657,6 +681,16 @@
 
         try {
           const parsed = JSON.parse(data);
+          // Handle credits messages from backend
+          if (parsed.type === 'credits_update' && parsed.credits !== undefined) {
+            const creditsEl = document.getElementById('credits-value');
+            if (creditsEl) creditsEl.textContent = parsed.credits;
+            continue;
+          }
+          if (parsed.type === 'credits_error') {
+            toast(parsed.message || '积分不足', 'error');
+            continue;
+          }
           const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
           if (delta && delta.content) {
             fullContent += delta.content;
@@ -1095,8 +1129,8 @@
     const prompt = wfGetPrompt();
     if (!prompt) { toast('请输入提示词', 'error'); return; }
 
-    const apiKey = await getChatApiKey();
-    if (apiKey === null) { toast('请先登录后台', 'error'); return; }
+    const authKey = await ensurePublicKey();
+    if (authKey === null) { toast('请先登录', 'error'); return; }
 
     waterfallRunning = true;
     waterfallStopping = false;
@@ -1108,7 +1142,7 @@
     const count = wfGetConcurrent();
     const workers = [];
     for (let i = 0; i < count; i++) {
-      workers.push(waterfallWorker(i, apiKey));
+      workers.push(waterfallWorker(i, authKey));
     }
     await Promise.allSettled(workers);
 
@@ -1120,7 +1154,7 @@
     setStatus('', '就绪');
   }
 
-  async function waterfallWorker(workerId, apiKey) {
+  async function waterfallWorker(workerId, authKey) {
     let consecutiveErrors = 0;
     const MAX_CONSECUTIVE_ERRORS = 5;
 
@@ -1150,26 +1184,41 @@
       wfRender();
 
       const startTime = Date.now();
-      const wfContent = wfUploadedImageBase64
-        ? [{ type: 'image_url', image_url: { url: wfUploadedImageBase64 } }, { type: 'text', text: prompt }]
-        : prompt;
-      const body = {
-        model: 'grok-imagine-1.0-video',
-        messages: [{ role: 'user', content: wfContent }],
-        stream: true,
-        video_config: params
-      };
 
       try {
-        const res = await fetch('/v1/chat/completions', {
+        // Step 1: Create task via /v1/public/video/start
+        const startBody = {
+          prompt: prompt,
+          aspect_ratio: params.aspect_ratio,
+          video_length: params.video_length,
+          resolution_name: params.resolution_name,
+          preset: params.preset,
+          image_url: wfUploadedImageBase64 || undefined
+        };
+        const startRes = await fetch('/v1/public/video/start', {
           method: 'POST',
-          headers: { ...buildAuthHeaders(apiKey), 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
+          headers: { ...buildAuthHeaders(authKey), 'Content-Type': 'application/json' },
+          body: JSON.stringify(startBody),
           signal: controller.signal
         });
-        if (!res.ok) { const errText = await res.text(); throw new Error(errText || 'HTTP ' + res.status); }
+        if (!startRes.ok) {
+          const errText = await startRes.text();
+          throw new Error(errText || 'HTTP ' + startRes.status);
+        }
+        const startData = await startRes.json();
+        const taskId = startData && startData.task_id ? String(startData.task_id) : '';
+        if (!taskId) throw new Error('Missing task_id');
 
-        const reader = res.body.getReader();
+        // Step 2: Connect to SSE stream
+        const sseRes = await fetch('/v1/public/video/sse?task_id=' + encodeURIComponent(taskId), {
+          signal: controller.signal
+        });
+        if (!sseRes.ok) {
+          const errText = await sseRes.text();
+          throw new Error(errText || 'SSE HTTP ' + sseRes.status);
+        }
+
+        const reader = sseRes.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '', fullContent = '';
 
@@ -1186,6 +1235,17 @@
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
+              // Handle credits_update from backend
+              if (parsed.type === 'credits_update' && parsed.credits !== undefined) {
+                const creditsEl = document.getElementById('credits-value');
+                if (creditsEl) creditsEl.textContent = parsed.credits;
+                continue;
+              }
+              if (parsed.type === 'credits_error') {
+                toast(parsed.message || '积分不足', 'error');
+                continue;
+              }
+              // Standard OpenAI-compatible SSE chunks
               const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
               if (delta && delta.content) fullContent += delta.content;
             } catch (e) { /* ignore */ }

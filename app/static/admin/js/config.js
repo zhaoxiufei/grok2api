@@ -30,7 +30,12 @@ const NUMERIC_FIELDS = new Set([
   'final_min_bytes',
   'medium_min_bytes',
   'concurrent',
-  'batch_size'
+  'batch_size',
+  'initial_credits',
+  'daily_checkin_credits',
+  'image_cost',
+  'image_edit_cost',
+  'video_cost'
 ]);
 
 const LOCALE_MAP = {
@@ -153,12 +158,33 @@ const LOCALE_MAP = {
     "concurrent": { title: "并发上限", desc: "批量刷新用量时的并发请求上限。推荐 10。" },
     "batch_size": { title: "批次大小", desc: "批量刷新用量的单批处理数量。推荐 50。" },
     "timeout": { title: "请求超时", desc: "用量查询接口的超时时间（秒）。推荐 60。" }
+  },
+
+
+  "oauth": {
+    "label": "OAuth 登录",
+    "linuxdo_enabled": { title: "启用 LINUX DO 登录", desc: "是否启用 LINUX DO 用户 OAuth2 登录。" },
+    "linuxdo_client_id": { title: "Client ID", desc: "LINUX DO Connect OAuth2 应用的 Client ID。" },
+    "linuxdo_client_secret": { title: "Client Secret", desc: "LINUX DO Connect OAuth2 应用的 Client Secret。" }
+  },
+
+
+  "credits": {
+    "label": "积分系统",
+    "enabled": { title: "启用积分系统", desc: "是否启用积分系统（仅对 OAuth 登录用户生效，Public Key 用户不受限）。" },
+    "initial_credits": { title: "初始积分", desc: "新用户首次登录时赠送的初始积分。" },
+    "daily_checkin_credits": { title: "签到积分", desc: "每日签到获得的积分奖励。" },
+    "image_cost": { title: "图片生成积分", desc: "每次生成图片消耗的积分（按返回图片数量计费）。" },
+    "image_edit_cost": { title: "图片编辑积分", desc: "每次编辑图片消耗的积分（按返回图片数量计费）。" },
+    "video_cost": { title: "视频生成积分", desc: "每次生成视频消耗的积分。" }
   }
 };
 
 // 配置部分说明（可选）
 const SECTION_DESCRIPTIONS = {
-  "proxy": "配置不正确将导致 403 错误。服务首次请求 Grok 时的 IP 必须与获取 CF Clearance 时的 IP 一致，后续服务器请求 IP 变化不会导致 403。"
+  "proxy": "配置不正确将导致 403 错误。服务首次请求 Grok 时的 IP 必须与获取 CF Clearance 时的 IP 一致，后续服务器请求 IP 变化不会导致 403。",
+  "oauth": "配置 LINUX DO Connect OAuth2 第三方登录。启用后用户可通过 LINUX DO 账号登录功能玩法页面。",
+  "credits": "积分系统仅对通过 OAuth 登录的用户生效，使用 Public Key 直接访问的用户不受积分限制。"
 };
 
 const SECTION_ORDER = new Map(Object.keys(LOCALE_MAP).map((key, index) => [key, index]));

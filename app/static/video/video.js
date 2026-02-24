@@ -212,6 +212,25 @@
     imageRemoveBtn.addEventListener('click', (e) => { e.stopPropagation(); removeUploadedImage(); });
   }
 
+  // Clipboard paste support for image upload (single mode → handleImageFile, waterfall mode → handleWfImageFile)
+  document.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) return;
+        if (currentMode === 'waterfall') {
+          handleWfImageFile(file);
+        } else {
+          handleImageFile(file);
+        }
+        return;
+      }
+    }
+  });
+
   function toast(message, type) {
     if (typeof showToast === 'function') {
       showToast(message, type);

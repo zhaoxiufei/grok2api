@@ -1,18 +1,21 @@
 import asyncio
+import base64
 import time
 import uuid
+from pathlib import Path
 from typing import Optional, List, Dict
 
 import orjson
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from app.core.auth import verify_public_key, get_public_api_key, is_public_enabled
+from app.core.auth import verify_public_key, is_valid_public_credential
 from app.core.config import get_config
 from app.core.logger import logger
 from app.api.v1.image import resolve_aspect_ratio
 from app.services.grok.services.image import ImageGenerationService
+from app.services.grok.services.image_edit import ImageEditService
 from app.services.grok.services.model import ModelService
 from app.services.token.manager import get_token_manager
 
@@ -33,7 +36,7 @@ async def _clean_sessions(now: float) -> None:
         _IMAGINE_SESSIONS.pop(key, None)
 
 
-async def _new_session(prompt: str, aspect_ratio: str, nsfw: Optional[bool]) -> str:
+async def _new_session(prompt: str, aspect_ratio: str, nsfw: Optional[bool], user_id: Optional[str] = None) -> str:
     task_id = uuid.uuid4().hex
     now = time.time()
     async with _IMAGINE_SESSIONS_LOCK:
@@ -42,6 +45,7 @@ async def _new_session(prompt: str, aspect_ratio: str, nsfw: Optional[bool]) -> 
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
             "nsfw": nsfw,
+            "user_id": user_id,
             "created_at": now,
         }
     return task_id
@@ -85,21 +89,18 @@ async def _drop_sessions(task_ids: List[str]) -> int:
 @router.websocket("/imagine/ws")
 async def public_imagine_ws(websocket: WebSocket):
     session_id = None
+    ws_user_id = None
     task_id = websocket.query_params.get("task_id")
     if task_id:
         info = await _get_session(task_id)
         if info:
             session_id = task_id
+            ws_user_id = info.get("user_id")
 
     ok = True
     if session_id is None:
-        public_key = get_public_api_key()
-        public_enabled = is_public_enabled()
-        if not public_key:
-            ok = public_enabled
-        else:
-            key = websocket.query_params.get("public_key")
-            ok = key == public_key
+        key = websocket.query_params.get("public_key") or ""
+        ok = is_valid_public_credential(key)
 
     if not ok:
         await websocket.close(code=1008)
@@ -128,7 +129,7 @@ async def public_imagine_ws(websocket: WebSocket):
         run_task = None
         stop_event.clear()
 
-    async def _run(prompt: str, aspect_ratio: str, nsfw: Optional[bool]):
+    async def _run(prompt: str, aspect_ratio: str, nsfw: Optional[bool], user_id: Optional[str] = None):
         model_id = "grok-imagine-1.0"
         model_info = ModelService.get(model_id)
         if not model_info or not model_info.is_image:
@@ -194,6 +195,26 @@ async def public_imagine_ws(websocket: WebSocket):
 
                 images = [img for img in result.data if img and img != "error"]
                 if images:
+                    # Per-image credits deduction for OAuth users
+                    if user_id:
+                        from app.services.credits.manager import get_credits_manager
+                        from app.core.config import get_config as _gc
+                        if _gc("credits.enabled", True):
+                            cost_per = int(_gc("credits.image_cost", 10))
+                            total_cost = cost_per * len(images)
+                            mgr = await get_credits_manager()
+                            ok = await mgr.consume(user_id, total_cost, reason="image")
+                            if not ok:
+                                u = await mgr.get_credits(user_id)
+                                bal = u.credits if u else 0
+                                await _send({
+                                    "type": "error",
+                                    "message": f"Insufficient credits: need {total_cost}, have {bal}",
+                                    "code": "insufficient_credits",
+                                })
+                                break
+                            u = await mgr.get_credits(user_id)
+                            await _send({"type": "credits_update", "credits": u.credits if u else 0})
                     for img_b64 in images:
                         sequence += 1
                         await _send(
@@ -269,7 +290,7 @@ async def public_imagine_ws(websocket: WebSocket):
                 if nsfw is not None:
                     nsfw = bool(nsfw)
                 await _stop_run()
-                run_task = asyncio.create_task(_run(prompt, aspect_ratio, nsfw))
+                run_task = asyncio.create_task(_run(prompt, aspect_ratio, nsfw, ws_user_id))
             elif action == "stop":
                 await _stop_run()
             else:
@@ -312,20 +333,15 @@ async def public_imagine_sse(
         if not session:
             raise HTTPException(status_code=404, detail="Task not found")
     else:
-        public_key = get_public_api_key()
-        public_enabled = is_public_enabled()
-        if not public_key:
-            if not public_enabled:
-                raise HTTPException(status_code=401, detail="Public access is disabled")
-        else:
-            key = request.query_params.get("public_key")
-            if key != public_key:
-                raise HTTPException(status_code=401, detail="Invalid authentication token")
+        key = request.query_params.get("public_key") or ""
+        if not is_valid_public_credential(key):
+            raise HTTPException(status_code=401, detail="Invalid authentication token")
 
     if session:
         prompt = str(session.get("prompt") or "").strip()
         ratio = str(session.get("aspect_ratio") or "2:3").strip() or "2:3"
         nsfw = session.get("nsfw")
+        sse_user_id = session.get("user_id")
     else:
         prompt = (prompt or "").strip()
         if not prompt:
@@ -335,6 +351,7 @@ async def public_imagine_sse(
         nsfw = request.query_params.get("nsfw")
         if nsfw is not None:
             nsfw = str(nsfw).lower() in ("1", "true", "yes", "on")
+        sse_user_id = None
 
     async def event_stream():
         try:
@@ -396,6 +413,24 @@ async def public_imagine_sse(
 
                     images = [img for img in result.data if img and img != "error"]
                     if images:
+                        # Per-image credits deduction for OAuth users
+                        if sse_user_id:
+                            from app.services.credits.manager import get_credits_manager
+                            from app.core.config import get_config as _gc
+                            if _gc("credits.enabled", True):
+                                cost_per = int(_gc("credits.image_cost", 10))
+                                total_cost = cost_per * len(images)
+                                mgr = await get_credits_manager()
+                                ok = await mgr.consume(sse_user_id, total_cost, reason="image")
+                                if not ok:
+                                    u = await mgr.get_credits(sse_user_id)
+                                    bal = u.credits if u else 0
+                                    yield (
+                                        f"data: {orjson.dumps({'type': 'error', 'message': f'Insufficient credits: need {total_cost}, have {bal}', 'code': 'insufficient_credits'}).decode()}\n\n"
+                                    )
+                                    break
+                                u = await mgr.get_credits(sse_user_id)
+                                yield f"data: {orjson.dumps({'type': 'credits_update', 'credits': u.credits if u else 0}).decode()}\n\n"
                         for img_b64 in images:
                             sequence += 1
                             payload = {
@@ -451,12 +486,21 @@ class ImagineStartRequest(BaseModel):
 
 
 @router.post("/imagine/start", dependencies=[Depends(verify_public_key)])
-async def public_imagine_start(data: ImagineStartRequest):
+async def public_imagine_start(request: Request, data: ImagineStartRequest):
     prompt = (data.prompt or "").strip()
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt cannot be empty")
     ratio = resolve_aspect_ratio(str(data.aspect_ratio or "2:3").strip() or "2:3")
-    task_id = await _new_session(prompt, ratio, data.nsfw)
+
+    # Extract OAuth user_id for per-image credits deduction in WS/SSE
+    from app.api.v1.public_api.oauth import get_oauth_user_id
+    token = ""
+    auth_header = request.headers.get("authorization") or ""
+    if auth_header.lower().startswith("bearer "):
+        token = auth_header[7:]
+    user_id = get_oauth_user_id(token) if token else None
+
+    task_id = await _new_session(prompt, ratio, data.nsfw, user_id)
     return {"task_id": task_id, "aspect_ratio": ratio}
 
 
@@ -468,3 +512,107 @@ class ImagineStopRequest(BaseModel):
 async def public_imagine_stop(data: ImagineStopRequest):
     removed = await _drop_sessions(data.task_ids or [])
     return {"status": "success", "removed": removed}
+
+
+@router.post("/imagine/edit", dependencies=[Depends(verify_public_key)])
+async def public_imagine_edit(
+    request: Request,
+    prompt: str = Form(...),
+    image: List[UploadFile] = File(...),
+    model: Optional[str] = Form("grok-imagine-1.0-edit"),
+    n: int = Form(1),
+    response_format: Optional[str] = Form("b64_json"),
+):
+    prompt = (prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt cannot be empty")
+
+    model_id = model or "grok-imagine-1.0-edit"
+    model_info = ModelService.get(model_id)
+    if not model_info:
+        raise HTTPException(status_code=400, detail="Model not available")
+
+    max_image_bytes = 50 * 1024 * 1024
+    allowed_types = {"image/png", "image/jpeg", "image/webp", "image/jpg"}
+
+    images: List[str] = []
+    for item in image:
+        content = await item.read()
+        await item.close()
+        if not content:
+            raise HTTPException(status_code=400, detail="File content is empty")
+        if len(content) > max_image_bytes:
+            raise HTTPException(status_code=400, detail="Image file too large. Maximum is 50MB.")
+        mime = (item.content_type or "").lower()
+        if mime == "image/jpg":
+            mime = "image/jpeg"
+        ext = Path(item.filename or "").suffix.lower()
+        if mime not in allowed_types:
+            if ext in (".jpg", ".jpeg"):
+                mime = "image/jpeg"
+            elif ext == ".png":
+                mime = "image/png"
+            elif ext == ".webp":
+                mime = "image/webp"
+            else:
+                raise HTTPException(status_code=400, detail="Unsupported image type. Supported: png, jpg, webp.")
+        b64 = base64.b64encode(content).decode()
+        images.append(f"data:{mime};base64,{b64}")
+
+    token_mgr = await get_token_manager()
+    await token_mgr.reload_if_stale()
+    token = None
+    for pool_name in ModelService.pool_candidates_for_model(model_id):
+        token = token_mgr.get_token(pool_name)
+        if token:
+            break
+    if not token:
+        raise HTTPException(status_code=503, detail="No available tokens")
+
+    fmt = response_format or "b64_json"
+    result = await ImageEditService().edit(
+        token_mgr=token_mgr,
+        token=token,
+        model_info=model_info,
+        prompt=prompt,
+        images=images,
+        n=n,
+        response_format=fmt,
+        stream=False,
+    )
+
+    output_images = [img for img in result.data if img and img != "error"]
+
+    # Per-image credits deduction for OAuth users
+    from app.api.v1.public_api.oauth import get_oauth_user_id
+    auth_header = request.headers.get("authorization") or ""
+    bearer_token = auth_header[7:] if auth_header.lower().startswith("bearer ") else ""
+    user_id = get_oauth_user_id(bearer_token) if bearer_token else None
+
+    credits_info = None
+    if user_id and output_images:
+        from app.services.credits.manager import get_credits_manager
+        if get_config("credits.enabled", True):
+            cost_per = int(get_config("credits.image_edit_cost", 10))
+            total_cost = cost_per * len(output_images)
+            mgr = await get_credits_manager()
+            ok = await mgr.consume(user_id, total_cost, reason="image_edit")
+            if not ok:
+                u = await mgr.get_credits(user_id)
+                bal = u.credits if u else 0
+                credits_info = {"error": True, "message": f"Insufficient credits: need {total_cost}, have {bal}", "credits": bal}
+            else:
+                u = await mgr.get_credits(user_id)
+                credits_info = {"credits": u.credits if u else 0}
+
+    field = "b64_json" if fmt == "b64_json" else "url"
+    data = [{field: img} for img in output_images]
+
+    resp: dict = {
+        "created": int(time.time()),
+        "data": data,
+    }
+    if credits_info:
+        resp["credits_info"] = credits_info
+
+    return JSONResponse(content=resp)

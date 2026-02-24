@@ -125,6 +125,21 @@
     editRemoveBtn.addEventListener('click', (e) => { e.stopPropagation(); removeEditImage(); });
   }
 
+  // Clipboard paste support for edit mode image upload
+  document.addEventListener('paste', (e) => {
+    if (imagineMode !== 'edit') return;
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) handleEditFile(file);
+        return;
+      }
+    }
+  });
+
   function toast(message, type) {
     if (typeof showToast === 'function') {
       showToast(message, type);
@@ -938,29 +953,7 @@
     setStatus('', '未连接');
   }
 
-  // === Edit Mode: get api_key for /v1/images/edits ===
-  let cachedEditApiKey = undefined; // undefined=not fetched, null=failed, string=key
-
-  async function getEditApiKey() {
-    if (cachedEditApiKey !== undefined) return cachedEditApiKey;
-    const adminKey = await ensureAdminKey();
-    if (adminKey === null) return null;
-    try {
-      const res = await fetch('/v1/admin/config', {
-        headers: buildAuthHeaders(adminKey)
-      });
-      if (!res.ok) throw new Error('Failed to fetch config');
-      const cfg = await res.json();
-      const apiKey = (cfg.app && cfg.app.api_key) || '';
-      cachedEditApiKey = apiKey || '';
-      return cachedEditApiKey;
-    } catch (e) {
-      console.warn('getEditApiKey failed:', e);
-      return null;
-    }
-  }
-
-  // === Edit Mode: call /v1/images/edits ===
+  // === Edit Mode: call /v1/public/imagine/edit ===
   async function startEditMode() {
     const prompt = promptInput ? promptInput.value.trim() : '';
     if (!prompt) {
@@ -972,9 +965,10 @@
       return;
     }
 
-    const apiKey = await getEditApiKey();
-    if (apiKey === null) {
-      toast('请先登录后台', 'error');
+    const authHeader = await ensurePublicKey();
+    if (authHeader === null) {
+      toast('请先登录', 'error');
+      window.location.href = '/login';
       return;
     }
 
@@ -996,10 +990,9 @@
     formData.append('response_format', 'b64_json');
 
     try {
-      const headers = apiKey ? { 'Authorization': `Bearer ${apiKey}` } : {};
-      const res = await fetch('/v1/images/edits', {
+      const res = await fetch('/v1/public/imagine/edit', {
         method: 'POST',
-        headers,
+        headers: buildAuthHeaders(authHeader),
         body: formData,
       });
 
@@ -1010,6 +1003,17 @@
 
       const data = await res.json();
       const elapsed = Date.now() - startTime;
+
+      // Update credits display if returned
+      if (data.credits_info) {
+        const creditsEl = document.getElementById('credits-value');
+        if (creditsEl && typeof data.credits_info.credits === 'number') {
+          creditsEl.textContent = data.credits_info.credits;
+        }
+        if (data.credits_info.error) {
+          toast(data.credits_info.message || '积分不足', 'error');
+        }
+      }
 
       if (data.data && data.data.length > 0) {
         data.data.forEach((item) => {

@@ -13,17 +13,92 @@ Grok2API rebuilt with **FastAPI**, fully aligned with the latest web call format
 
 ## New Features (Fork)
 
-### Chat Page
+> Listed in reverse chronological order (newest first).
 
-A new **Chat** page (`/chat`) has been added to the Playground section, providing a visual conversational interface.
+### LINUX DO OAuth Login & Credits System <sub>02-24</sub>
 
-- Streaming / non-streaming output
-- Conversation history
-- Multi-model switching
+**OAuth Third-Party Login**:
+
+- LINUX DO Connect OAuth2 login support — users can access Playground pages via their LINUX DO account
+- Admin config panel now includes **OAuth Login** and **Credits System** sections with descriptions
+
+**Credits System** (only applies to OAuth-logged-in users; Public Key users are unrestricted):
+
+- New users receive initial credits on first login (configurable)
+- Daily check-in rewards (configurable)
+- Image generation, image editing, and video generation are billed independently, charged per actual output count
+- Requests are blocked when credits are insufficient; frontend displays real-time balance changes
+
+**Credits Configuration** (`[credits]`):
+
+| Field | Description | Default |
+| :--- | :--- | :--- |
+| `enabled` | Enable credits system | `true` |
+| `initial_credits` | Initial credits for new users | `100` |
+| `daily_checkin_credits` | Daily check-in reward | `10` |
+| `image_cost` | Image generation cost (per image) | `10` |
+| `image_edit_cost` | Image editing cost (per image) | `10` |
+| `video_cost` | Video generation cost (per video) | `20` |
 
 ---
 
-### Imagine Image Generation / Editing
+### MySQL / TiDB Cloud Storage Support <sub>02-21</sub>
+
+- MySQL SSL connections (TiDB Cloud and other cloud databases)
+- `token_id` now uses SHA-256 hash as primary key for cross-backend compatibility
+- Auto-detects and migrates PK structure on first startup — no manual steps needed
+
+---
+
+### Token Management Enhancement <sub>02-21</sub>
+
+- New **"Refresh All"** button: one-click refresh of all Token statuses without manual selection
+- New **Type Badges**: Token list displays colored badges to distinguish **Basic** (blue) and **Super** (amber) SSO types
+- New **Type Filtering**: Tab bar supports filtering by Basic / Super to quickly locate tokens in different pools
+- Fixed non-streaming request `stream` default for better OpenAI SDK compatibility
+
+---
+
+### Auth Refactoring & Playground Navigation <sub>02-21</sub>
+
+- **Removed `SITE_MODE` env var**, replaced with config field `app.public_enabled` (toggle via admin panel, no restart)
+- **New `public_key` config**: independent auth key for Public mode, separate from `api_key`
+- **Three-tier authentication**: `verify_app_key` (admin) → `verify_api_key_if_private` (API) → `verify_public_key` (public pages, optional)
+- New **Playground** shortcut button in admin panel top-right corner
+- Imagine waterfall performance optimization + video preview enhancement
+
+---
+
+### Cache Management Enhancement <sub>02-18</sub>
+
+- New **Batch Download**: select multiple local image/video files and click the "Download" button to get a single ZIP archive (`ZIP_STORED`, no compression overhead); selecting only 1 file downloads it directly without zipping
+- New **Single File Download**: a download icon has been added to each file row for quick single-file download
+- New **Inline Video Preview**: built-in video player in the cache management page, click to play directly without opening a new tab
+- New **Inline Image Preview**: opening an image link in the browser displays it directly instead of triggering a download
+
+---
+
+### Imagine Waterfall Enhancement <sub>02-17</sub>
+
+- New **Auto Filter**: configurable image filter threshold (loaded from server config)
+- New **NSFW Parameter**: client-side NSFW toggle control
+- New **Reverse Insert**: new images appear at the top
+- Real-time image status labels (Generating / Done / Failed)
+- HTTP URL and Base64 image format support
+- Security hardening + fixed OpenAI SDK non-streaming SSE compatibility
+- One-click batch NSFW toggle + removed 1000-item async endpoint truncation limit
+
+---
+
+### Public / Private Site Mode <sub>02-15</sub>
+
+- Added `SITE_MODE` env var for public/private site separation (later refactored to `app.public_enabled` config field on 02-21)
+
+---
+
+### Imagine Edit Mode & Image-to-Video <sub>02-14</sub>
+
+**Imagine Edit Mode**:
 
 A new **Image Editing** mode has been added to the **Imagine** page (`/imagine`) in the Playground section.
 
@@ -32,25 +107,20 @@ A new **Image Editing** mode has been added to the **Imagine** page (`/imagine`)
 | **Generate Mode** | Generate images from scratch using prompts (original feature) |
 | **Edit Mode** | Upload a reference image + prompt for AI-based image editing |
 
-**Edit Mode Features**:
-
 - One-click toggle between Generate / Edit mode
 - Drag-and-drop or click to upload a reference image (max 50MB)
 - Image preview and removal
 - Calls `/v1/images/edits` endpoint, model `grok-imagine-1.0-edit`
 
-**Waterfall Enhancements**:
-
-- Real-time image status labels (Generating / Done / Failed)
-- Configurable image filter threshold (loaded from server config)
-- HTTP URL and Base64 image format support
-- Client-side NSFW parameter control
-
 <img width="518" height="790" alt="image" src="https://github.com/user-attachments/assets/7e1b975c-4c73-454b-91e4-4c5ce2e940fb" />
+
+**Image-to-Video**:
+
+- Upload a reference image to generate video based on image content (both Single and Waterfall modes supported)
 
 ---
 
-### Video Generation Page
+### Video Generation Page <sub>02-09</sub>
 
 The **Video Generation** page (`/video`) in the Playground section provides a visual interface for video generation.
 
@@ -64,7 +134,6 @@ The **Video Generation** page (`/video`) in the Playground section provides a vi
 **Features**:
 
 - Prompt input with `Ctrl+Enter` shortcut
-- **Image-to-Video**: Upload a reference image to generate video based on image content (both Single and Waterfall modes supported)
 - Adjustable parameters:
   - Aspect ratio: `16:9` / `9:16` / `1:1` / `2:3` / `3:2`
   - Video length: `6s` / `10s` / `15s`
@@ -87,20 +156,13 @@ The **Video Generation** page (`/video`) in the Playground section provides a vi
 
 ---
 
-### Token Management Enhancement
+### Chat Page <sub>02-20 upstream</sub>
 
-- New **"Refresh All"** button: one-click refresh of all Token statuses without manual selection
-- New **Type Badges**: Token list displays colored badges to distinguish **Basic** (blue) and **Super** (amber) SSO types
-- New **Type Filtering**: Tab bar supports filtering by Basic / Super to quickly locate tokens in different pools
+A new **Chat** page (`/chat`) has been added to the Playground section, providing a visual conversational interface.
 
----
-
-### Cache Management Enhancement
-
-- New **Batch Download**: select multiple local image/video files and click the "Download" button to get a single ZIP archive (`ZIP_STORED`, no compression overhead); selecting only 1 file downloads it directly without zipping
-- New **Single File Download**: a download icon has been added to each file row for quick single-file download
-- New **Inline Video Preview**: built-in video player in the cache management page, click to play directly without opening a new tab
-- New **Inline Image Preview**: opening an image link in the browser displays it directly instead of triggering a download
+- Streaming / non-streaming output
+- Conversation history
+- Multi-model switching
 
 <br>
 
@@ -133,12 +195,7 @@ app/static/common/{html,js,css,img}/          # Shared resources
 
 ### Authentication Refactoring
 
-- **Removed `SITE_MODE` environment variable**, replaced with config field `app.public_enabled` (toggle via admin panel without restart)
-- **New `public_key` config**: independent auth key for Public mode, separate from `api_key`
-- **Three-tier authentication**:
-  - `verify_app_key` — Admin panel auth (`app_key`)
-  - `verify_api_key_if_private` — API auth, auto-bypass when `public_enabled=true`
-  - `verify_public_key` — Public API auth (`public_key`, optional)
+See [Auth Refactoring & Playground Navigation](#auth-refactoring--playground-navigation-02-21) in the New Features section above.
 
 <br>
 
@@ -256,8 +313,13 @@ Toggle via **Config Management** in the admin panel (`app.public_enabled`), no r
 | `/v1/public/imagine/start` | POST | Create image generation task |
 | `/v1/public/imagine/sse` | GET | Image generation SSE stream |
 | `/v1/public/imagine/ws` | WS | Image generation WebSocket |
+| `/v1/public/imagine/edit` | POST | Image editing (multipart/form-data) |
 | `/v1/public/imagine/stop` | POST | Stop image tasks |
 | `/v1/public/imagine/config` | GET | Get image generation config |
+| `/v1/public/oauth/login` | GET | LINUX DO OAuth login redirect |
+| `/v1/public/oauth/callback` | GET | OAuth callback handler |
+| `/v1/public/oauth/credits` | GET | Query current user credits |
+| `/v1/public/oauth/checkin` | POST | Daily check-in |
 | `/v1/public/video/start` | POST | Create video generation task |
 | `/v1/public/video/sse` | GET | Video generation SSE stream |
 | `/v1/public/video/stop` | POST | Stop video tasks |
@@ -306,6 +368,8 @@ Main config file: `data/config.toml` (auto-generated on first run)
 | `[asset]` | Asset Management | `upload_concurrent`, `download_concurrent`, `delete_concurrent` |
 | `[nsfw]` | NSFW Batch Ops | `concurrent`, `batch_size`, `timeout` |
 | `[usage]` | Usage Query | `concurrent`, `batch_size`, `timeout` |
+| `[oauth]` | OAuth Login | `linuxdo_enabled`, `linuxdo_client_id`, `linuxdo_client_secret` |
+| `[credits]` | Credits System | `enabled`, `initial_credits`, `daily_checkin_credits`, `image_cost`, `image_edit_cost`, `video_cost` |
 
 <br>
 

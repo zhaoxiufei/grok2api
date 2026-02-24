@@ -20,6 +20,12 @@
       <a href="/voice" class="nav-link text-sm" data-nav="/voice">LiveKit 陪聊</a>
     </div>
     <div class="nav-actions">
+      <span id="credits-display" class="nav-action-btn hidden" style="cursor:default;font-variant-numeric:tabular-nums;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:2px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v12M6 12h12"/></svg>
+        <span id="credits-value">-</span>
+        <svg id="credits-refresh" onclick="refreshCredits()" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-left:4px;cursor:pointer;opacity:0.5;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      </span>
+      <button id="checkin-btn" onclick="handleCheckin()" type="button" class="nav-action-btn hidden" title="每日签到">签到</button>
       <a href="/admin/login" class="nav-action-btn">管理后台</a>
       <button id="public-logout-btn" onclick="publicLogout()" type="button" class="nav-action-btn">退出</button>
     </div>

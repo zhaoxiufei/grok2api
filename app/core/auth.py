@@ -127,6 +127,30 @@ async def verify_app_key(
     return auth.credentials
 
 
+def is_valid_public_credential(token: str) -> bool:
+    """
+    Check if a token is a valid public credential.
+
+    Supports both static public_key and OAuth session tokens.
+    Used by SSE/WS endpoints that do manual auth checks.
+    """
+    from app.api.v1.public_api.oauth import verify_oauth_token
+
+    public_key = get_public_api_key()
+    public_enabled = is_public_enabled()
+
+    if not public_key:
+        return public_enabled
+
+    if token == public_key:
+        return True
+
+    if verify_oauth_token(token):
+        return True
+
+    return False
+
+
 async def verify_public_key(
     auth: Optional[HTTPAuthorizationCredentials] = Security(security),
 ) -> Optional[str]:
@@ -134,7 +158,10 @@ async def verify_public_key(
     验证 Public Key（public 接口使用）。
 
     默认不公开，需配置 public_key 才能访问；若开启 public_enabled 且未配置 public_key，则放开访问。
+    支持 OAuth 临时 token 作为有效凭证。
     """
+    from app.api.v1.public_api.oauth import verify_oauth_token
+
     public_key = get_public_api_key()
     public_enabled = is_public_enabled()
 
@@ -153,6 +180,10 @@ async def verify_public_key(
             detail="Missing authentication token",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Check OAuth token first
+    if verify_oauth_token(auth.credentials):
+        return auth.credentials
 
     if auth.credentials != public_key:
         raise HTTPException(

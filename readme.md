@@ -13,17 +13,92 @@
 
 ## 二开新增功能
 
-### Chat 聊天页面
+> 按功能上线时间排列，最新的在最前面。
 
-在 Playground 功能区（`/chat`）新增 **Chat 聊天** 页面，提供可视化的对话交互界面。
+### LINUX DO OAuth 登录 & 积分系统 <sub>02-24</sub>
 
-- 支持流式/非流式输出
-- 对话历史记录
-- 多模型切换
+**OAuth 第三方登录**：
+
+- 支持 LINUX DO Connect OAuth2 登录，用户可通过 L 站账号访问 Playground 功能页面
+- 后台配置管理新增 **OAuth 登录** 和 **积分系统** 两个配置区块，含中文说明
+
+**积分系统**（仅对 OAuth 登录用户生效，Public Key 用户不受限）：
+
+- 新用户首次登录自动赠送初始积分（可配置）
+- 每日签到获得积分奖励（可配置）
+- 图片生成、图片编辑、视频生成分别独立计费，按实际返回数量扣费
+- 积分不足时自动拦截生成请求，前端实时显示余额变动
+
+**积分配置项**（`[credits]`）：
+
+| 配置项 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `enabled` | 是否启用积分系统 | `true` |
+| `initial_credits` | 新用户初始积分 | `100` |
+| `daily_checkin_credits` | 每日签到积分 | `10` |
+| `image_cost` | 图片生成消耗（按张） | `10` |
+| `image_edit_cost` | 图片编辑消耗（按张） | `10` |
+| `video_cost` | 视频生成消耗（按个） | `20` |
 
 ---
 
-### Imagine 图片生成/编辑
+### MySQL / TiDB Cloud 存储支持 <sub>02-21</sub>
+
+- 支持 MySQL SSL 连接（TiDB Cloud 等云数据库）
+- `token_id` 改用 SHA-256 哈希主键，兼容不同存储后端
+- 首次启动自动检测并迁移主键结构，无需手动操作
+
+---
+
+### Token 管理增强 <sub>02-21</sub>
+
+- 新增 **「刷新全部」** 按钮：一键刷新所有 Token 状态，无需手动全选
+- 新增 **类型标识**：Token 列表以彩色标签区分 **Basic**（蓝色）和 **Super**（琥珀色）SSO 类型
+- 新增 **类型筛选**：Tab 栏支持按 Basic / Super 筛选，快速定位不同池的 Token
+- 修复非流式请求 `stream` 默认值，提升 OpenAI SDK 兼容性
+
+---
+
+### 认证体系重构 & Playground 导航 <sub>02-21</sub>
+
+- **移除 `SITE_MODE` 环境变量**，改为配置项 `app.public_enabled`（后台一键切换，无需重启）
+- **新增 `public_key` 配置**：Public 模式下的独立认证密钥，与 `api_key` 分离
+- **三层认证架构**：`verify_app_key`（管理后台）→ `verify_api_key_if_private`（API）→ `verify_public_key`（公共页面，可选）
+- 管理后台右上角新增 **Playground** 快捷导航按钮
+- Imagine 瀑布流性能优化 + 视频在线预览增强
+
+---
+
+### 缓存管理增强 <sub>02-18</sub>
+
+- 新增 **批量下载**：勾选多个本地图片/视频文件后，点击底部工具栏「下载」按钮，服务端自动打包为 ZIP（`ZIP_STORED` 不压缩）一次性下载；仅选 1 个文件时直接下载，不打包
+- 新增 **单文件下载**：每行文件操作列新增下载图标，一键下载单个文件
+- 新增 **视频在线预览**：缓存管理页面内嵌视频播放器，点击查看直接播放，无需跳转新页面
+- 新增 **图片在线预览**：浏览器打开文件链接可直接显示图片，不再触发下载
+
+---
+
+### Imagine 瀑布流增强 <sub>02-17</sub>
+
+- 新增 **自动过滤**：可配置的图片过滤阈值（从服务端配置加载）
+- 新增 **NSFW 参数传递**：客户端可控制 NSFW 开关
+- 新增 **反向新增**：新图片从顶部插入
+- 图片状态标签实时显示（生成中/完成/失败）
+- 支持 HTTP URL 和 Base64 两种图片格式
+- 安全加固 + 修复 OpenAI SDK 非流式请求返回 SSE 的兼容性问题
+- 一键全部 NSFW + 移除异步端点 1000 条截断限制
+
+---
+
+### 公开站 / 私有站模式 <sub>02-15</sub>
+
+- 新增 `SITE_MODE` 环境变量，支持公开站与私有站模式分离（后续在 02-21 重构为 `app.public_enabled` 配置项）
+
+---
+
+### Imagine 编辑模式 & Video 图生视频 <sub>02-14</sub>
+
+**Imagine 编辑模式**：
 
 在 Playground 功能区（`/imagine`）的 **Imagine** 页面新增 **图片编辑** 模式。
 
@@ -32,27 +107,22 @@
 | **生成模式** | 通过提示词从零生成图片（原有功能） |
 | **编辑模式** | 上传参考图片 + 提示词，基于图片进行 AI 编辑 |
 
-**编辑模式特性**：
-
 - 生成/编辑模式一键切换
 - 支持拖拽或点击上传参考图片（最大 50MB）
 - 图片预览与移除
 - 调用 `/v1/images/edits` 接口，模型 `grok-imagine-1.0-edit`
 
-**瀑布流增强**：
-
-- 图片状态标签实时显示（生成中/完成/失败）
-- 可配置的图片过滤阈值（从服务端配置加载）
-- 支持 HTTP URL 和 Base64 两种图片格式
-- 客户端 NSFW 参数传递
-
 <img width="518" height="790" alt="image" src="https://github.com/user-attachments/assets/7e1b975c-4c73-454b-91e4-4c5ce2e940fb" />
+
+**Video 图生视频**：
+
+- 上传参考图片，基于图片内容生成视频（单视频模式 & 瀑布流模式均支持）
 
 ---
 
-### Video 视频生成页面
+### Video 视频生成页面 <sub>02-09</sub>
 
-在 Playground 功能区（`/video`）的 **Video 视频生成** 页面，提供可视化的视频生成操作界面。
+在 Playground 功能区（`/video`）新增 **Video 视频生成** 页面，提供可视化的视频生成操作界面。
 
 **双模式支持**：
 
@@ -64,7 +134,6 @@
 **功能特性**：
 
 - 提示词输入，支持 `Ctrl+Enter` 快捷生成
-- **图生视频**：上传参考图片，基于图片内容生成视频（单视频模式 & 瀑布流模式均支持）
 - 可调节参数面板：
   - 宽高比：`16:9` / `9:16` / `1:1` / `2:3` / `3:2`
   - 视频时长：`6s` / `10s` / `15s`
@@ -87,20 +156,13 @@
 
 ---
 
-### Token 管理增强
+### Chat 聊天页面 <sub>02-20 上游</sub>
 
-- 新增 **「刷新全部」** 按钮：一键刷新所有 Token 状态，无需手动全选
-- 新增 **类型标识**：Token 列表以彩色标签区分 **Basic**（蓝色）和 **Super**（琥珀色）SSO 类型
-- 新增 **类型筛选**：Tab 栏支持按 Basic / Super 筛选，快速定位不同池的 Token
+在 Playground 功能区（`/chat`）新增 **Chat 聊天** 页面，提供可视化的对话交互界面。
 
----
-
-### 缓存管理增强
-
-- 新增 **批量下载**：勾选多个本地图片/视频文件后，点击底部工具栏「下载」按钮，服务端自动打包为 ZIP（`ZIP_STORED` 不压缩）一次性下载；仅选 1 个文件时直接下载，不打包
-- 新增 **单文件下载**：每行文件操作列新增下载图标，一键下载单个文件
-- 新增 **视频在线预览**：缓存管理页面内嵌视频播放器，点击查看直接播放，无需跳转新页面
-- 新增 **图片在线预览**：浏览器打开文件链接可直接显示图片，不再触发下载
+- 支持流式/非流式输出
+- 对话历史记录
+- 多模型切换
 
 <br>
 
@@ -130,15 +192,6 @@ app/static/admin/js/{token,cache}.js
 app/static/admin/css/{token,cache}.css
 app/static/common/{html,js,css,img}/          # 公共资源
 ```
-
-### 认证体系重构
-
-- **移除 `SITE_MODE` 环境变量**，改为配置项 `app.public_enabled`（在后台配置管理页面即可切换）
-- **新增 `public_key` 配置**：Public 模式下的独立认证密钥，与 `api_key` 分离
-- **三层认证架构**：
-  - `verify_app_key` — 管理后台认证（`app_key`）
-  - `verify_api_key_if_private` — API 认证，`public_enabled=true` 时自动放行
-  - `verify_public_key` — 公共 API 认证（`public_key`，可选）
 
 ### 新增服务模块
 
@@ -262,8 +315,13 @@ docker compose up -d
 | `/v1/public/imagine/start` | POST | 创建图片生成任务 |
 | `/v1/public/imagine/sse` | GET | 图片生成 SSE 流 |
 | `/v1/public/imagine/ws` | WS | 图片生成 WebSocket |
+| `/v1/public/imagine/edit` | POST | 图片编辑（multipart/form-data） |
 | `/v1/public/imagine/stop` | POST | 停止图片任务 |
 | `/v1/public/imagine/config` | GET | 获取图片生成配置 |
+| `/v1/public/oauth/login` | GET | LINUX DO OAuth 登录跳转 |
+| `/v1/public/oauth/callback` | GET | OAuth 回调处理 |
+| `/v1/public/oauth/credits` | GET | 查询当前用户积分 |
+| `/v1/public/oauth/checkin` | POST | 每日签到 |
 | `/v1/public/video/start` | POST | 创建视频生成任务 |
 | `/v1/public/video/sse` | GET | 视频生成 SSE 流 |
 | `/v1/public/video/stop` | POST | 停止视频任务 |
@@ -312,6 +370,8 @@ docker compose up -d
 | `[asset]` | 资产管理 | `upload_concurrent`, `download_concurrent`, `delete_concurrent` |
 | `[nsfw]` | NSFW 批量操作 | `concurrent`, `batch_size`, `timeout` |
 | `[usage]` | 用量查询 | `concurrent`, `batch_size`, `timeout` |
+| `[oauth]` | OAuth 登录 | `linuxdo_enabled`, `linuxdo_client_id`, `linuxdo_client_secret` |
+| `[credits]` | 积分系统 | `enabled`, `initial_credits`, `daily_checkin_credits`, `image_cost`, `image_edit_cost`, `video_cost` |
 
 <br>
 
