@@ -192,10 +192,12 @@ async function ensurePublicKey() {
     } catch (e) {
       // ignore
     }
+    window.location.href = '/login';
     return null;
   }
 
   if (!key) {
+    window.location.href = '/login';
     return null;
   }
 
@@ -206,6 +208,7 @@ async function ensurePublicKey() {
     return cachedPublicKey;
   } catch (e) {
     clearStoredPublicKey();
+    window.location.href = '/login';
     return null;
   }
 }

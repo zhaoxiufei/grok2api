@@ -257,14 +257,19 @@ async def public_video_sse(request: Request, task_id: str = Query("")):
 
             # Collect all chunks; forward to client
             collected = []
+            video_success = False
             async for chunk in stream:
                 if await request.is_disconnected():
                     break
                 collected.append(chunk)
+                # Detect actual video delivery: finish_reason="stop" means VideoStreamProcessor
+                # completed successfully (progress=100 + videoUrl present)
+                if '"finish_reason":"stop"' in chunk or '"finish_reason": "stop"' in chunk:
+                    video_success = True
                 yield chunk
 
-            # Per-video credits deduction for OAuth users (after successful generation)
-            if sse_user_id and collected:
+            # Per-video credits deduction for OAuth users (only on successful generation)
+            if sse_user_id and video_success:
                 from app.core.config import get_config as _gc
                 if _gc("credits.enabled", True):
                     cost = int(_gc("credits.video_cost", 20))

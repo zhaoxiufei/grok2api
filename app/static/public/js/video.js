@@ -316,6 +316,16 @@
     if (progressText) progressText.textContent = text;
   }
 
+  function stripThinkingContent(text) {
+    if (!text) return text;
+    let cleaned = text.replace(/<think>[\s\S]*?<\/think>\s*/g, '');
+    cleaned = cleaned.replace(/<think>[\s\S]*/g, '');
+    cleaned = cleaned.replace(/正在.*?进度\d+%\s*/g, '');
+    cleaned = cleaned.replace(/正在对视频进行超分辨率\s*/g, '');
+    cleaned = cleaned.replace(/I generated a video with the prompt:.*$/g, '');
+    return cleaned.trim();
+  }
+
   function sanitizeVideoHtml(html) {
     // 仅允许 video/source 标签及安全属性，防止 XSS
     const parser = new DOMParser();
@@ -694,7 +704,15 @@
           const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
           if (delta && delta.content) {
             fullContent += delta.content;
-            updateProgress('视频生成中...');
+            const progressMatch = delta.content.match(/进度(\d+)%/);
+            if (progressMatch) {
+              const pct = parseInt(progressMatch[1], 10);
+              if (progressFill) {
+                progressFill.classList.remove('indeterminate');
+                progressFill.style.width = pct + '%';
+              }
+              updateProgress('视频生成中 ' + pct + '%');
+            }
           }
         } catch (e) {
           // ignore parse errors
@@ -702,6 +720,7 @@
       }
     }
 
+    fullContent = stripThinkingContent(fullContent);
     handleVideoResult(fullContent, prompt);
   }
 
@@ -727,20 +746,29 @@
       return;
     }
 
-    const isHtml = content.trim().startsWith('<');
-    const isUrl = /^https?:\/\//.test(content.trim());
+    // Check if content is just text (no URL or HTML video) — likely a moderation rejection
+    const hasUrl = /https?:\/\//.test(content);
+    const hasVideoTag = /<video[\s>]/i.test(content);
+    if (!hasUrl && !hasVideoTag) {
+      setStatus('error', '生成失败');
+      const msg = content.length > 200 ? content.substring(0, 200) + '...' : content;
+      updateProgress(msg);
+      toast('视频生成被拒绝', 'error');
+      return;
+    }
 
-    if (isHtml) {
+    // Try to extract a direct video URL first (handles mixed content with think text)
+    const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov)[^\s"'<>]*/i);
+    if (urlMatch) {
+      showVideo(urlMatch[0], false);
+    } else if (hasVideoTag) {
       showVideo(content, true);
-    } else if (isUrl) {
-      showVideo(content.trim(), false);
     } else {
-      // Try to extract URL from content
-      const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov)[^\s"'<>]*/i);
-      if (urlMatch) {
-        showVideo(urlMatch[0], false);
+      // Fallback: extract any URL
+      const anyUrl = content.match(/https?:\/\/[^\s"'<>]+/i);
+      if (anyUrl) {
+        showVideo(anyUrl[0], false);
       } else {
-        // Treat as HTML content
         showVideo(content, true);
       }
     }
@@ -1247,12 +1275,26 @@
               }
               // Standard OpenAI-compatible SSE chunks
               const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-              if (delta && delta.content) fullContent += delta.content;
+              if (delta && delta.content) {
+                fullContent += delta.content;
+                const progressMatch = delta.content.match(/进度(\d+)%/);
+                if (progressMatch) {
+                  const pct = parseInt(progressMatch[1], 10);
+                  const card = wfGrid && wfGrid.querySelector(`.wf-item[data-id="${itemId}"]`);
+                  if (card) {
+                    const fill = card.querySelector('.wf-placeholder-fill');
+                    const txt = card.querySelector('.wf-placeholder-text');
+                    if (fill) { fill.style.transition = 'width 0.3s ease'; fill.style.width = pct + '%'; }
+                    if (txt) txt.textContent = '生成中 ' + pct + '%';
+                  }
+                }
+              }
             } catch (e) { /* ignore */ }
           }
         }
 
         const elapsed = Date.now() - startTime;
+        fullContent = stripThinkingContent(fullContent);
         const idx = wfItems.findIndex(i => i.id === itemId);
         if (idx !== -1) {
           wfItems[idx].content = fullContent;

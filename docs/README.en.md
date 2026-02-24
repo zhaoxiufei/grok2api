@@ -34,11 +34,19 @@ Grok2API rebuilt with **FastAPI**, fully aligned with the latest web call format
 | Field | Description | Default |
 | :--- | :--- | :--- |
 | `enabled` | Enable credits system | `true` |
-| `initial_credits` | Initial credits for new users | `100` |
-| `daily_checkin_credits` | Daily check-in reward | `10` |
-| `image_cost` | Image generation cost (per image) | `10` |
-| `image_edit_cost` | Image editing cost (per image) | `10` |
-| `video_cost` | Video generation cost (per video) | `20` |
+| `initial_credits` | Initial credits for new users | `1000` |
+| `daily_checkin_credits` | Daily check-in reward | `1000` |
+| `image_cost` | Image generation cost (per image) | `5` |
+| `image_edit_cost` | Image editing cost (per image) | `50` |
+| `video_cost` | Video generation cost (per video) | `50` |
+
+---
+
+### Video Generation UX Improvements <sub>02-24</sub>
+
+- New **Real-time Progress Bar**: extracts progress percentage from SSE stream during video generation — updates global progress bar in single mode, per-card progress bar in waterfall mode
+- New **Moderation Rejection Detection**: displays specific rejection reason when video content is blocked by moderation, instead of generic "No video content"
+- Fixed **Credits Deduction Timing**: video generation credits are only deducted after successful generation — failed or moderation-blocked requests are not charged
 
 ---
 
@@ -108,7 +116,7 @@ A new **Image Editing** mode has been added to the **Imagine** page (`/imagine`)
 | **Edit Mode** | Upload a reference image + prompt for AI-based image editing |
 
 - One-click toggle between Generate / Edit mode
-- Drag-and-drop or click to upload a reference image (max 50MB)
+- Drag-and-drop, click to upload, or paste from clipboard for reference image (max 50MB)
 - Image preview and removal
 - Calls `/v1/images/edits` endpoint, model `grok-imagine-1.0-edit`
 
@@ -116,7 +124,7 @@ A new **Image Editing** mode has been added to the **Imagine** page (`/imagine`)
 
 **Image-to-Video**:
 
-- Upload a reference image to generate video based on image content (both Single and Waterfall modes supported)
+- Upload a reference image (drag-and-drop, click, or paste from clipboard) to generate video based on image content (both Single and Waterfall modes supported)
 
 ---
 
@@ -167,6 +175,8 @@ A new **Chat** page (`/chat`) has been added to the Playground section, providin
 <br>
 
 ## Architecture Changes (v1.5.0)
+
+> The following architectural changes originate from upstream [chenyme/grok2api](https://github.com/chenyme/grok2api) and have been merged into this fork.
 
 Compared to the previous version, v1.5.0 includes the following architectural improvements:
 
