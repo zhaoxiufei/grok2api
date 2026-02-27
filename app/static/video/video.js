@@ -577,9 +577,9 @@
 
     const stream = streamToggle ? streamToggle.checked : true;
     const videoConfig = {
-      aspect_ratio: ratioSelect ? ratioSelect.value : '3:2',
+      aspect_ratio: ratioSelect ? ratioSelect.value : '9:16',
       video_length: lengthSelect ? parseInt(lengthSelect.value, 10) : 6,
-      resolution_name: resolutionSelect ? resolutionSelect.value : '480p',
+      resolution_name: resolutionSelect ? resolutionSelect.value : '720p',
       preset: presetSelect ? presetSelect.value : 'custom'
     };
 
@@ -717,10 +717,12 @@
     }
 
     // Try to extract a direct video URL first (handles mixed content with think text)
+    let isHtml = false;
     const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov)[^\s"'<>]*/i);
     if (urlMatch) {
       showVideo(urlMatch[0], false);
     } else if (hasVideoTag) {
+      isHtml = true;
       showVideo(content, true);
     } else {
       // Fallback: extract any URL
@@ -728,6 +730,7 @@
       if (anyUrl) {
         showVideo(anyUrl[0], false);
       } else {
+        isHtml = true;
         showVideo(content, true);
       }
     }
@@ -743,9 +746,9 @@
       timestamp: Date.now(),
       elapsed: elapsed,
       params: {
-        aspect_ratio: ratioSelect ? ratioSelect.value : '3:2',
+        aspect_ratio: ratioSelect ? ratioSelect.value : '9:16',
         video_length: lengthSelect ? lengthSelect.value : '6',
-        resolution_name: resolutionSelect ? resolutionSelect.value : '480p',
+        resolution_name: resolutionSelect ? resolutionSelect.value : '720p',
         preset: presetSelect ? presetSelect.value : 'custom'
       }
     });
@@ -1104,9 +1107,9 @@
   function wfGetPrompt() { return wfPromptInput ? wfPromptInput.value.trim() : ''; }
   function wfGetParams() {
     return {
-      aspect_ratio: wfRatio ? wfRatio.value : '3:2',
+      aspect_ratio: wfRatio ? wfRatio.value : '9:16',
       video_length: wfLength ? parseInt(wfLength.value, 10) : 6,
-      resolution_name: wfResolution ? wfResolution.value : '480p',
+      resolution_name: wfResolution ? wfResolution.value : '720p',
       preset: 'custom'
     };
   }
