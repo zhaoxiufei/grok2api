@@ -62,3 +62,4 @@ config.local.toml
 .spec-workflow/
 CLAUDE.md
 nul
+.ace-tool/

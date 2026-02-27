@@ -3,89 +3,58 @@
   --video-surface-muted: #f3f4f6;
 }
 
-/* 布局 */
-.video-grid {
+/* ========== 顶部双列网格 (对齐 imagine-top-grid) ========== */
+.video-top-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2.1fr) minmax(0, 1fr);
+  grid-template-columns: 2fr 1fr;
   gap: 24px;
-  align-items: start;
-}
-
-.video-primary,
-.video-side {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  min-width: 0;
+  margin-bottom: 24px;
+  align-items: stretch;
 }
 
 @media (max-width: 1024px) {
-  .video-grid {
+  .video-top-grid {
     grid-template-columns: 1fr;
   }
 }
 
-/* 卡片 */
+/* ========== 卡片 ========== */
 .video-card {
   background: var(--video-surface);
   border: none;
-  border-radius: 8px;
-  padding: 16px;
+  border-radius: 14px;
+  padding: 20px;
   box-shadow: none;
-}
-
-/* 设置区 */
-.video-settings {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  overflow: visible;
 }
 
-.video-textarea {
-  min-height: 80px;
-  resize: vertical;
-  line-height: 1.5;
+.video-card-collapsible {
+  transition: all 0.3s ease;
 }
 
-.video-toggle-row {
-  display: flex;
-  align-items: center;
-  gap: 24px;
+.video-card-collapsible.collapsed .collapse-icon {
+  transform: rotate(-90deg);
 }
 
-.video-toggle-item {
-  display: flex;
-  flex-direction: column;
+.video-card-collapsible.collapsed .card-content {
+  max-height: 0;
+  opacity: 0;
+  margin: 0;
+  padding: 0;
 }
 
-.video-toggle-item .field-label {
-  margin-bottom: 6px;
-}
-
-/* 操作按钮 */
-.video-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.video-actions .geist-button,
-.video-actions .geist-button-outline {
-  height: 32px;
-}
-
-/* 状态头部 */
-.video-status-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: nowrap;
-  margin-bottom: 12px;
-}
-
-.video-status-header .card-title {
+.video-card-collapsible.collapsed .card-title {
   margin-bottom: 0;
+}
+
+.video-card-collapsible.collapsed .status-header-row {
+  margin-bottom: 0;
+}
+
+.video-card-collapsible.collapsed {
+  padding: 12px 20px;
 }
 
 /* meta-item 背景色覆盖 */
@@ -93,37 +62,18 @@
   background: var(--video-surface-muted);
 }
 
-/* 参数标签网格 */
-.video-params-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
+/* ========== Textarea ========== */
+.video-textarea {
+  min-height: 96px;
+  resize: vertical;
+  line-height: 1.5;
 }
 
-.video-param-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: var(--video-surface-muted);
-  font-size: 11px;
-  line-height: 1;
-  transition: all 0.2s;
+.settings-prompt .video-textarea {
+  flex: 1;
 }
 
-.video-param-label {
-  color: var(--accents-4);
-}
-
-.video-param-value {
-  color: var(--accents-7);
-  font-weight: 600;
-  font-family: 'Geist Mono', monospace;
-}
-
-/* 视频空状态 */
+/* ========== 视频空状态 ========== */
 .video-empty {
   display: flex;
   flex-direction: column;
@@ -135,7 +85,7 @@
   text-align: center;
 }
 
-/* 视频进度 */
+/* ========== 视频进度 ========== */
 .video-progress {
   padding: 20px 0;
 }
@@ -178,7 +128,7 @@
   font-family: 'Geist Mono', monospace;
 }
 
-/* 视频播放器 */
+/* ========== 视频播放器 ========== */
 .video-player-wrapper {
   border-radius: 8px;
   overflow: hidden;
@@ -202,7 +152,7 @@
   border-radius: 8px;
 }
 
-/* 视频元数据 */
+/* ========== 视频元数据 ========== */
 .video-meta {
   display: flex;
   justify-content: space-between;
@@ -227,20 +177,7 @@
   flex-shrink: 0;
 }
 
-/* 历史列表 */
-.video-history-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.video-history-header .card-title {
-  margin-bottom: 0;
-}
-
+/* ========== 历史列表 ========== */
 .video-history-list {
   display: flex;
   flex-direction: column;
@@ -327,13 +264,25 @@
   color: #dc2626;
 }
 
+/* 历史记录折叠容器 */
+.video-history-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 2000px;
+  opacity: 1;
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.2s ease;
+}
+
+.video-history-collapsible.collapsed {
+  max-height: 0;
+  opacity: 0;
+}
+
 .video-hint {
   font-size: 11px;
   color: var(--accents-4);
-}
-
-.hidden {
-  display: none !important;
 }
 
 /* ========== 图片上传区域 ========== */
@@ -401,87 +350,34 @@
   background: rgba(0,0,0,0.85);
 }
 
-/* ========== 模式切换 ========== */
-.video-mode-toggle {
+/* ========== 瀑布流区域布局 ========== */
+#wfSection {
   display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: #fff;
-}
-
-.video-mode-btn {
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--accents-5);
-  font-size: 11px;
-  padding: 3px 12px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-  font-family: 'Geist Sans', sans-serif;
-}
-
-.video-mode-btn:hover {
-  background: var(--hover-bg, #f5f5f5);
-  color: var(--accents-7);
-}
-
-.video-mode-btn.active {
-  background: #000;
-  color: #fff;
-  border-color: #000;
-}
-
-/* ========== 瀑布流设置 ========== */
-.waterfall-settings {
-  display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 16px;
-  flex-wrap: wrap;
-  padding: 12px 16px;
-  background: var(--video-surface);
-  border-radius: 8px;
-  margin-bottom: 16px;
 }
 
-.waterfall-settings .field-group {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.waterfall-settings .field-group label {
-  font-size: 11px;
-  color: var(--accents-5);
-  white-space: nowrap;
-}
-
-.waterfall-settings .field-group select {
-  height: 28px;
-  font-size: 11px;
-  padding: 0 8px;
-  min-width: 60px;
-}
-
-/* ========== 瀑布流网格 ========== */
+/* ========== 瀑布流网格 (对齐 Imagine 4列) ========== */
 .video-waterfall {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   width: 100%;
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 1200px) {
+  .video-waterfall {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
   .video-waterfall {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 480px) {
   .video-waterfall {
     grid-template-columns: 1fr;
   }
@@ -523,7 +419,7 @@
 }
 
 .wf-item-info {
-  padding: 8px 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -661,11 +557,6 @@
   display: flex;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 .video-lightbox video {
   max-width: 90%;
   max-height: 85%;
@@ -745,7 +636,7 @@
   font-family: 'Geist Mono', monospace;
 }
 
-/* ========== 浮动工具栏 ========== */
+/* ========== 浮动工具栏 (对齐 Imagine floating-actions) ========== */
 .video-floating-bar {
   position: fixed;
   bottom: 32px;
@@ -758,7 +649,7 @@
   padding: 8px 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08);
   cursor: move;
   user-select: none;
@@ -800,14 +691,6 @@
   border-color: #000;
 }
 
-.float-sep {
-  display: inline-block;
-  width: 1px;
-  height: 14px;
-  background: var(--border);
-  margin: 0 2px;
-}
-
 .float-counter {
   display: inline-flex;
   align-items: center;
@@ -820,91 +703,6 @@
   color: #fff;
   border-radius: 999px;
   font-family: 'Geist Mono', monospace;
-}
-
-/* ========== 瀑布流全宽布局 ========== */
-.video-grid.waterfall-active {
-  grid-template-columns: 1fr;
-}
-
-/* ========== 瀑布流图片上传行 ========== */
-.wf-image-upload-row {
-  margin-bottom: 16px;
-}
-
-.wf-image-upload-area {
-  border: 1.5px dashed var(--border, #e5e7eb);
-  border-radius: 8px;
-  cursor: pointer;
-  transition: border-color 0.2s, background 0.2s;
-  overflow: hidden;
-}
-
-.wf-image-upload-area:hover,
-.wf-image-upload-area.dragover {
-  border-color: #111;
-  background: var(--video-surface-muted);
-}
-
-.wf-image-placeholder {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  font-size: 11px;
-  color: var(--accents-4);
-}
-
-.wf-image-preview {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 12px;
-  background: var(--video-surface-muted);
-  position: relative;
-}
-
-.wf-image-preview img {
-  height: 36px;
-  width: 36px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
-.wf-image-name {
-  font-size: 11px;
-  color: var(--accents-6);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
-
-.wf-image-remove {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0,0,0,0.5);
-  color: #fff;
-  font-size: 14px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.2s;
-}
-
-.wf-image-remove:hover {
-  background: rgba(0,0,0,0.8);
-}
-
-.video-grid.waterfall-active .video-side {
-  display: none;
 }
 
 /* 瀑布流空状态 */

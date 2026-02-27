@@ -360,3 +360,281 @@ td.table-empty {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* ========== 共享组件样式 (Imagine / Video) ========== */
+
+/* 卡片标题 */
+.card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accents-7);
+  margin: 0;
+}
+
+/* 表单标签 */
+.field-label {
+  display: block;
+  font-size: 11px;
+  color: var(--accents-4);
+  margin-bottom: 6px;
+}
+
+/* 状态文字 */
+.status-text {
+  font-size: 11px;
+  color: var(--accents-4);
+}
+
+.status-text.connected {
+  color: #059669;
+}
+
+.status-text.connecting {
+  color: #d97706;
+}
+
+.status-text.error {
+  color: #dc2626;
+}
+
+/* 元信息网格 */
+.meta-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.meta-item {
+  padding: 12px;
+  border-radius: 10px;
+  background: #f7f7f8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+}
+
+.meta-label {
+  font-size: 10px;
+  color: var(--accents-4);
+}
+
+.meta-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accents-7);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 150px;
+}
+
+/* 开关组件 */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  display: none;
+}
+
+.toggle-track {
+  width: 38px;
+  height: 20px;
+  background: #e5e7eb;
+  border-radius: 999px;
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.toggle-track::after {
+  content: "";
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  border-radius: 999px;
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  box-shadow: none;
+  transition: transform 0.2s ease;
+}
+
+.toggle input:checked + .toggle-track {
+  background: #111;
+}
+
+.toggle input:checked + .toggle-track::after {
+  transform: translateX(18px);
+}
+
+.toggle-label {
+  font-size: 12px;
+  color: var(--accents-4);
+}
+
+/* 设置区布局 */
+.settings-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-top {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+}
+
+.settings-prompt {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-options {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.settings-bottom-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-toggles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.settings-toggle {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-toggle .field-label {
+  display: block;
+  font-size: 11px;
+  color: var(--accents-4);
+  margin-bottom: 6px;
+}
+
+@media (max-width: 768px) {
+  .settings-top {
+    grid-template-columns: 1fr;
+  }
+  .settings-bottom-row {
+    grid-template-columns: 1fr;
+  }
+  .settings-toggles {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 可折叠卡片 */
+.collapse-icon {
+  transition: transform 0.3s ease;
+  flex-shrink: 0;
+  color: var(--accents-4);
+}
+
+.card-content {
+  overflow: hidden;
+  transition: max-height 0.3s ease, opacity 0.2s ease;
+  max-height: 2000px;
+  opacity: 1;
+}
+
+/* 状态头部行 */
+.status-header-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 12px;
+}
+
+.status-header-row .card-title {
+  margin-bottom: 0;
+}
+
+.status-header-row .status-text {
+  flex: 1;
+  text-align: right;
+}
+
+.status-header-row .collapse-icon {
+  flex-shrink: 0;
+}
+
+/* 模式切换 (共享样式) */
+.mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  width: fit-content;
+  margin-bottom: 4px;
+}
+
+.mode-toggle-btn {
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--accents-5);
+  font-size: 11px;
+  padding: 3px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  font-family: 'Geist Sans', sans-serif;
+}
+
+.mode-toggle-btn:hover {
+  background: #f5f5f5;
+  color: var(--accents-7);
+}
+
+.mode-toggle-btn.active {
+  background: #000;
+  color: #fff;
+  border-color: #000;
+}
+
+/* 浮动工具栏分隔符 */
+.toolbar-sep {
+  display: inline-block;
+  width: 1px;
+  height: 14px;
+  background: var(--border);
+  margin: 0 6px;
+}
+
+/* 空状态 */
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accents-6);
+}
+
+.empty-subtitle {
+  font-size: 11px;
+  color: var(--accents-4);
+}
+
+.hidden {
+  display: none !important;
+}

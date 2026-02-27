@@ -1,17 +1,20 @@
 (() => {
-  const generateBtn = document.getElementById('generateBtn');
-  const stopBtn = document.getElementById('stopBtn');
+  // === DOM: Settings ===
   const promptInput = document.getElementById('promptInput');
   const ratioSelect = document.getElementById('ratioSelect');
   const lengthSelect = document.getElementById('lengthSelect');
   const resolutionSelect = document.getElementById('resolutionSelect');
   const presetSelect = document.getElementById('presetSelect');
   const streamToggle = document.getElementById('streamToggle');
+
+  // === DOM: Status Panel ===
   const statusText = document.getElementById('statusText');
   const statusRatio = document.getElementById('statusRatio');
   const statusLength = document.getElementById('statusLength');
   const statusResolution = document.getElementById('statusResolution');
   const statusPreset = document.getElementById('statusPreset');
+
+  // === DOM: Video Preview ===
   const videoEmpty = document.getElementById('videoEmpty');
   const videoProgress = document.getElementById('videoProgress');
   const progressFill = document.getElementById('progressFill');
@@ -22,11 +25,14 @@
   const videoMeta = document.getElementById('videoMeta');
   const metaPrompt = document.getElementById('metaPrompt');
   const metaElapsed = document.getElementById('metaElapsed');
+
+  // === DOM: History ===
   const historyEmpty = document.getElementById('historyEmpty');
   const historyList = document.getElementById('historyList');
   const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+  const historyToggleBtn = document.getElementById('historyToggleBtn');
 
-  // === DOM: Image Upload ===
+  // === DOM: Image Upload (单视频) ===
   const imageUploadArea = document.getElementById('imageUploadArea');
   const imageFileInput = document.getElementById('imageFileInput');
   const imageUploadPlaceholder = document.getElementById('imageUploadPlaceholder');
@@ -35,13 +41,14 @@
   const imageRemoveBtn = document.getElementById('imageRemoveBtn');
 
   // === DOM: Mode Toggle ===
-  const videoGrid = document.getElementById('videoGrid');
+  const videoTopGrid = document.getElementById('videoTopGrid');
   const singleSettings = document.getElementById('singleSettings');
   const singlePreview = document.getElementById('singlePreview');
   const wfSection = document.getElementById('wfSection');
-  const modeBtns = document.querySelectorAll('.video-mode-btn');
+  // 两个模式切换容器中的按钮
+  const allModeBtns = document.querySelectorAll('.mode-toggle-btn');
 
-  // === DOM: Waterfall ===
+  // === DOM: Waterfall Settings ===
   const wfPromptInput = document.getElementById('wfPromptInput');
   const wfRatio = document.getElementById('wfRatio');
   const wfLength = document.getElementById('wfLength');
@@ -50,6 +57,7 @@
   const wfAutoScroll = document.getElementById('wfAutoScroll');
   const wfAutoDownload = document.getElementById('wfAutoDownload');
   const wfGrid = document.getElementById('wfGrid');
+  const wfMaxCount = document.getElementById('wfMaxCount');
 
   // === DOM: Waterfall Image Upload ===
   const wfImageUploadArea = document.getElementById('wfImageUploadArea');
@@ -57,7 +65,6 @@
   const wfImagePlaceholder = document.getElementById('wfImagePlaceholder');
   const wfImagePreviewContainer = document.getElementById('wfImagePreviewContainer');
   const wfImagePreview = document.getElementById('wfImagePreview');
-  const wfImageName = document.getElementById('wfImageName');
   const wfImageRemoveBtn = document.getElementById('wfImageRemoveBtn');
 
   // === DOM: Lightbox ===
@@ -73,6 +80,8 @@
   const wfStartBtn = document.getElementById('wfStartBtn');
   const wfStopBtn = document.getElementById('wfStopBtn');
   const wfClearBtn = document.getElementById('wfClearBtn');
+  const wfClearSep = document.getElementById('wfClearSep');
+  const wfBatchSep = document.getElementById('wfBatchSep');
   const floatCounter = document.getElementById('floatCounter');
   const floatSelectAll = document.getElementById('floatSelectAll');
   const selectionToolbar = document.getElementById('selectionToolbar');
@@ -89,6 +98,7 @@
   let isGenerating = false;
   let abortController = null;
   let generateStartTime = 0;
+  let historyCollapsed = true; // 默认折叠
 
   // Waterfall state
   let wfItems = [];
@@ -97,18 +107,32 @@
   let lightboxIndex = -1;
 
   // Image upload state
-  let uploadedImageBase64 = null; // data:image/xxx;base64,... or null
-  let wfUploadedImageBase64 = null; // waterfall mode image
+  let uploadedImageBase64 = null;
+  let wfUploadedImageBase64 = null;
 
-  // Cached api_key for /v1/chat/completions (fetched from admin config)
-  let cachedChatApiKey = undefined; // undefined=not fetched, null=no auth, string=Bearer xxx
+  // Cached api_key
+  let cachedChatApiKey = undefined;
 
-  /**
-   * Get the api_key needed for /v1/chat/completions.
-   * Uses ensureAdminKey() to authenticate with the admin backend first,
-   * then fetches api_key from /v1/admin/config.
-   * Returns: 'Bearer <api_key>' | '' (no auth needed) | null (auth failed)
-   */
+  // Waterfall concurrent engine state
+  let waterfallRunning = false;
+  let waterfallStopping = false;
+  let waterfallAbortControllers = [];
+  let waterfallActiveCount = 0;
+  let waterfallTotalCreated = 0;
+
+  // ================================================================
+  // =================== COLLAPSE TOGGLE =============================
+  // ================================================================
+  document.querySelectorAll('[data-collapse-toggle]').forEach(header => {
+    header.addEventListener('click', () => {
+      const card = header.closest('.video-card-collapsible');
+      if (card) card.classList.toggle('collapsed');
+    });
+  });
+
+  // ================================================================
+  // =================== API KEY =====================================
+  // ================================================================
   async function getChatApiKey() {
     if (cachedChatApiKey !== undefined) return cachedChatApiKey;
     const adminKey = await ensureAdminKey();
@@ -128,13 +152,9 @@
     }
   }
 
-  // Waterfall concurrent engine state
-  let waterfallRunning = false;
-  let waterfallStopping = false;  // Graceful stop: wait for in-progress videos to finish
-  let waterfallAbortControllers = [];
-  let waterfallActiveCount = 0;   // Number of currently generating videos
-
-  // === Image Upload Handlers ===
+  // ================================================================
+  // =================== IMAGE UPLOAD (Single) =======================
+  // ================================================================
   function handleImageFile(file) {
     if (!file || !file.type.startsWith('image/')) {
       toast('请选择图片文件', 'error');
@@ -162,7 +182,9 @@
     if (imageUploadPlaceholder) imageUploadPlaceholder.classList.remove('hidden');
   }
 
-  // === Waterfall Image Upload Handlers ===
+  // ================================================================
+  // =================== IMAGE UPLOAD (Waterfall) ====================
+  // ================================================================
   function handleWfImageFile(file) {
     if (!file || !file.type.startsWith('image/')) {
       toast('请选择图片文件', 'error');
@@ -176,7 +198,6 @@
     reader.onload = (e) => {
       wfUploadedImageBase64 = e.target.result;
       if (wfImagePreview) wfImagePreview.src = wfUploadedImageBase64;
-      if (wfImageName) wfImageName.textContent = file.name;
       if (wfImagePlaceholder) wfImagePlaceholder.classList.add('hidden');
       if (wfImagePreviewContainer) wfImagePreviewContainer.classList.remove('hidden');
     };
@@ -187,11 +208,11 @@
     wfUploadedImageBase64 = null;
     if (wfImageFileInput) wfImageFileInput.value = '';
     if (wfImagePreview) wfImagePreview.src = '';
-    if (wfImageName) wfImageName.textContent = '';
     if (wfImagePreviewContainer) wfImagePreviewContainer.classList.add('hidden');
     if (wfImagePlaceholder) wfImagePlaceholder.classList.remove('hidden');
   }
 
+  // 绑定图片上传事件 (瀑布流)
   if (wfImageUploadArea) {
     wfImageUploadArea.addEventListener('click', (e) => {
       if (e.target.closest('#wfImageRemoveBtn')) return;
@@ -216,6 +237,7 @@
     wfImageRemoveBtn.addEventListener('click', (e) => { e.stopPropagation(); removeWfImage(); });
   }
 
+  // 绑定图片上传事件 (单视频)
   if (imageUploadArea) {
     imageUploadArea.addEventListener('click', (e) => {
       if (e.target.closest('#imageRemoveBtn')) return;
@@ -240,7 +262,7 @@
     imageRemoveBtn.addEventListener('click', (e) => { e.stopPropagation(); removeUploadedImage(); });
   }
 
-  // Clipboard paste support for image upload (single mode → handleImageFile, waterfall mode → handleWfImageFile)
+  // 剪贴板粘贴图片
   document.addEventListener('paste', (e) => {
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
@@ -259,6 +281,9 @@
     }
   });
 
+  // ================================================================
+  // =================== HELPERS =====================================
+  // ================================================================
   function toast(message, type) {
     if (typeof showToast === 'function') {
       showToast(message, type);
@@ -272,15 +297,21 @@
     if (state) statusText.classList.add(state);
   }
 
+  // 浮动栏生成/停止按钮切换
   function setButtons(generating) {
-    if (!generateBtn || !stopBtn) return;
+    if (!wfStartBtn || !wfStopBtn) return;
     if (generating) {
-      generateBtn.classList.add('hidden');
-      stopBtn.classList.remove('hidden');
+      wfStartBtn.classList.add('hidden');
+      wfStopBtn.classList.remove('hidden');
+      // 单视频模式下的停止按钮文案
+      if (currentMode === 'single') {
+        wfStopBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="5" width="14" height="14" /></svg> 停止';
+        wfStopBtn.disabled = false;
+      }
     } else {
-      generateBtn.classList.remove('hidden');
-      stopBtn.classList.add('hidden');
-      generateBtn.disabled = false;
+      wfStartBtn.classList.remove('hidden');
+      wfStopBtn.classList.add('hidden');
+      wfStopBtn.disabled = false;
     }
   }
 
@@ -327,7 +358,6 @@
   }
 
   function sanitizeVideoHtml(html) {
-    // 仅允许 video/source 标签及安全属性，防止 XSS
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     const videos = doc.querySelectorAll('video');
@@ -341,7 +371,6 @@
       video.style.width = '100%';
       video.style.borderRadius = '8px';
 
-      // 复制安全属性
       if (srcVideo.getAttribute('poster')) {
         video.poster = srcVideo.getAttribute('poster');
       }
@@ -349,7 +378,6 @@
         video.src = srcVideo.getAttribute('src');
       }
 
-      // 复制 source 子元素
       srcVideo.querySelectorAll('source').forEach(srcSource => {
         const source = document.createElement('source');
         if (srcSource.getAttribute('src')) source.src = srcSource.getAttribute('src');
@@ -374,7 +402,6 @@
         if (safeContent) {
           videoHtmlContainer.appendChild(safeContent);
         } else {
-          // 无法解析出 video 标签，尝试提取 URL
           const urlMatch = url.match(/https?:\/\/[^\s"'<>]+/i);
           if (urlMatch) {
             showVideo(urlMatch[0], false);
@@ -400,7 +427,9 @@
     if (metaElapsed) metaElapsed.textContent = elapsed ? elapsed + 'ms' : '';
   }
 
-  // --- History ---
+  // ================================================================
+  // =================== HISTORY =====================================
+  // ================================================================
   function loadHistory() {
     try {
       const raw = localStorage.getItem(HISTORY_KEY);
@@ -412,11 +441,9 @@
 
   function saveHistory(history) {
     try {
-      // 限制每条记录的 content 大小，避免 localStorage 溢出
       const trimmed = history.slice(0, MAX_HISTORY).map(item => {
         const copy = { ...item };
         if (copy.content && copy.content.length > 2000) {
-          // 对于过长的 HTML 内容，仅保留 URL
           const urlMatch = copy.content.match(/https?:\/\/[^\s"'<>]+/i);
           if (urlMatch) {
             copy.content = urlMatch[0];
@@ -429,7 +456,6 @@
       });
       localStorage.setItem(HISTORY_KEY, JSON.stringify(trimmed));
     } catch (e) {
-      // 存储满时清理最旧的记录
       try {
         const reduced = history.slice(0, Math.floor(MAX_HISTORY / 2));
         localStorage.setItem(HISTORY_KEY, JSON.stringify(reduced));
@@ -447,7 +473,6 @@
   }
 
   function clearHistory() {
-    // Delete all cached source files before clearing
     const history = loadHistory();
     history.forEach(item => _deleteCachedFile(item, { notifyOnFail: false }));
     try {
@@ -463,7 +488,6 @@
     const history = loadHistory();
     if (index >= 0 && index < history.length) {
       const item = history[index];
-      // Try to delete the cached source file on server
       _deleteCachedFile(item, { notifyOnFail: true });
       history.splice(index, 1);
       saveHistory(history);
@@ -485,8 +509,6 @@
       return;
     }
 
-    // Fire-and-forget: backend auto-cleans associated thumbnail
-    // Public mode returns '' (valid), only null means auth truly failed
     ensureAdminKey().then(apiKey => {
       if (apiKey === null) {
         warn('删除缓存失败：登录已失效，请重新登录');
@@ -502,6 +524,60 @@
     });
   }
 
+  function createHistoryItemElement(item, index) {
+    const el = document.createElement('div');
+    el.className = 'video-history-item';
+    el.dataset.index = index;
+
+    const icon = document.createElement('div');
+    icon.className = 'video-history-icon';
+    icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+    const info = document.createElement('div');
+    info.className = 'video-history-info';
+
+    const promptEl = document.createElement('div');
+    promptEl.className = 'video-history-prompt';
+    promptEl.textContent = item.prompt || '(无提示词)';
+
+    const timeEl = document.createElement('div');
+    timeEl.className = 'video-history-time';
+    const date = new Date(item.timestamp);
+    timeEl.textContent = date.toLocaleString('zh-CN', {
+      month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit'
+    });
+    if (item.elapsed) {
+      timeEl.textContent += ' · ' + item.elapsed + 'ms';
+    }
+
+    info.appendChild(promptEl);
+    info.appendChild(timeEl);
+    el.appendChild(icon);
+    el.appendChild(info);
+
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'video-history-delete';
+    deleteBtn.title = '删除';
+    deleteBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    deleteBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      deleteHistoryItem(index);
+    });
+    el.appendChild(deleteBtn);
+
+    el.addEventListener('click', () => {
+      const isHtml = item.type === 'html';
+      showVideo(item.content, isHtml);
+      showMeta(item.prompt, item.elapsed);
+
+      historyList.querySelectorAll('.video-history-item').forEach(i => i.classList.remove('active'));
+      el.classList.add('active');
+    });
+
+    return el;
+  }
+
   function renderHistory() {
     const history = loadHistory();
     if (!historyList) return;
@@ -509,69 +585,44 @@
 
     if (history.length === 0) {
       if (historyEmpty) historyEmpty.style.display = '';
+      if (historyToggleBtn) historyToggleBtn.classList.add('hidden');
       return;
     }
     if (historyEmpty) historyEmpty.style.display = 'none';
 
-    history.forEach((item, index) => {
-      const el = document.createElement('div');
-      el.className = 'video-history-item';
-      el.dataset.index = index;
+    // 第一条（最新）始终直接显示
+    historyList.appendChild(createHistoryItemElement(history[0], 0));
 
-      const icon = document.createElement('div');
-      icon.className = 'video-history-icon';
-      icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+    // 剩余条目包裹在折叠容器中
+    if (history.length > 1) {
+      const collapsible = document.createElement('div');
+      collapsible.className = 'video-history-collapsible';
+      if (historyCollapsed) collapsible.classList.add('collapsed');
 
-      const info = document.createElement('div');
-      info.className = 'video-history-info';
-
-      const promptEl = document.createElement('div');
-      promptEl.className = 'video-history-prompt';
-      promptEl.textContent = item.prompt || '(无提示词)';
-
-      const timeEl = document.createElement('div');
-      timeEl.className = 'video-history-time';
-      const date = new Date(item.timestamp);
-      timeEl.textContent = date.toLocaleString('zh-CN', {
-        month: '2-digit', day: '2-digit',
-        hour: '2-digit', minute: '2-digit'
-      });
-      if (item.elapsed) {
-        timeEl.textContent += ' · ' + item.elapsed + 'ms';
+      for (let i = 1; i < history.length; i++) {
+        collapsible.appendChild(createHistoryItemElement(history[i], i));
       }
+      historyList.appendChild(collapsible);
+    }
 
-      info.appendChild(promptEl);
-      info.appendChild(timeEl);
-      el.appendChild(icon);
-      el.appendChild(info);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'video-history-delete';
-      deleteBtn.title = '删除';
-      deleteBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-      deleteBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        deleteHistoryItem(index);
-      });
-      el.appendChild(deleteBtn);
-
-      el.addEventListener('click', () => {
-        const isHtml = item.type === 'html';
-        showVideo(item.content, isHtml);
-        showMeta(item.prompt, item.elapsed);
-
-        historyList.querySelectorAll('.video-history-item').forEach(i => i.classList.remove('active'));
-        el.classList.add('active');
-      });
-
-      historyList.appendChild(el);
-    });
+    // 更新切换按钮
+    if (historyToggleBtn) {
+      if (history.length <= 1) {
+        historyToggleBtn.classList.add('hidden');
+      } else {
+        historyToggleBtn.classList.remove('hidden');
+        historyToggleBtn.textContent = historyCollapsed
+          ? '展开全部 (' + (history.length - 1) + ')'
+          : '收起';
+      }
+    }
   }
 
-  // --- API ---
+  // ================================================================
+  // =================== API (Single Video) ==========================
+  // ================================================================
   function buildVideoContent(prompt) {
     if (uploadedImageBase64) {
-      // Multimodal: image + text
       const parts = [
         { type: 'image_url', image_url: { url: uploadedImageBase64 } },
         { type: 'text', text: prompt }
@@ -616,7 +667,6 @@
     showProgress('正在连接服务...');
 
     try {
-      // Step 1: Create task via public video API
       const startBody = {
         prompt: prompt,
         aspect_ratio: videoConfig.aspect_ratio,
@@ -639,7 +689,6 @@
       const taskId = startData && startData.task_id ? String(startData.task_id) : '';
       if (!taskId) throw new Error('Missing task_id');
 
-      // Step 2: Connect to SSE stream
       const sseRes = await fetch('/v1/public/video/sse?task_id=' + encodeURIComponent(taskId), {
         signal: abortController.signal
       });
@@ -691,7 +740,6 @@
 
         try {
           const parsed = JSON.parse(data);
-          // Handle credits messages from backend
           if (parsed.type === 'credits_update' && parsed.credits !== undefined) {
             const creditsEl = document.getElementById('credits-value');
             if (creditsEl) creditsEl.textContent = parsed.credits;
@@ -724,18 +772,6 @@
     handleVideoResult(fullContent, prompt);
   }
 
-  async function handleNonStreamResponse(res, prompt) {
-    const data = await res.json();
-    let content = '';
-    if (data.choices && data.choices[0]) {
-      const msg = data.choices[0].message;
-      if (msg && msg.content) {
-        content = msg.content;
-      }
-    }
-    handleVideoResult(content, prompt);
-  }
-
   function handleVideoResult(content, prompt) {
     const elapsed = Date.now() - generateStartTime;
 
@@ -746,7 +782,6 @@
       return;
     }
 
-    // Check if content is just text (no URL or HTML video) — likely a moderation rejection
     const hasUrl = /https?:\/\//.test(content);
     const hasVideoTag = /<video[\s>]/i.test(content);
     if (!hasUrl && !hasVideoTag) {
@@ -757,7 +792,6 @@
       return;
     }
 
-    // Try to extract a direct video URL first (handles mixed content with think text)
     let isHtml = false;
     const urlMatch = content.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov)[^\s"'<>]*/i);
     if (urlMatch) {
@@ -766,7 +800,6 @@
       isHtml = true;
       showVideo(content, true);
     } else {
-      // Fallback: extract any URL
       const anyUrl = content.match(/https?:\/\/[^\s"'<>]+/i);
       if (anyUrl) {
         showVideo(anyUrl[0], false);
@@ -802,44 +835,52 @@
   }
 
   // ================================================================
-  // =================== MODE TOGGLE ================================
+  // =================== MODE TOGGLE =================================
   // ================================================================
   function switchMode(mode) {
     currentMode = mode;
-    modeBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+
+    // 同步两个模式切换容器的 active 状态
+    allModeBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
 
     if (mode === 'single') {
-      if (singleSettings) singleSettings.classList.remove('hidden');
+      if (videoTopGrid) videoTopGrid.classList.remove('hidden');
       if (singlePreview) singlePreview.classList.remove('hidden');
       if (wfSection) wfSection.classList.add('hidden');
-      if (videoGrid) videoGrid.classList.remove('waterfall-active');
-      if (wfFloatingBar) wfFloatingBar.classList.add('hidden');
       wfExitSelectionMode();
-      // Show top buttons in single mode
-      if (generateBtn) generateBtn.classList.remove('hidden');
+      // 隐藏瀑布流专用按钮
+      updateFloatingBarForMode();
     } else {
-      if (singleSettings) singleSettings.classList.add('hidden');
+      if (videoTopGrid) videoTopGrid.classList.add('hidden');
       if (singlePreview) singlePreview.classList.add('hidden');
       if (wfSection) wfSection.classList.remove('hidden');
-      if (videoGrid) videoGrid.classList.add('waterfall-active');
-      if (wfFloatingBar) wfFloatingBar.classList.remove('hidden');
-      // Hide top buttons in waterfall mode (use floating bar instead)
-      if (generateBtn) generateBtn.classList.add('hidden');
-      if (stopBtn) stopBtn.classList.add('hidden');
+      updateFloatingBarForMode();
       wfLoadItems();
       wfRender();
     }
-    // Stop any ongoing generation when switching
-    if (currentMode === 'single' && isGenerating) stopGeneration();
-    if (waterfallRunning) stopWaterfall();
+    // 切换模式时停止正在进行的生成
+    if (mode === 'single' && waterfallRunning) stopWaterfall();
+    if (mode === 'waterfall' && isGenerating) stopGeneration();
   }
 
-  modeBtns.forEach(btn => {
+  // 根据当前模式显示/隐藏浮动栏中的按钮
+  function updateFloatingBarForMode() {
+    const wfOnlyEls = [wfClearSep, wfClearBtn, wfBatchSep, floatSelectAll];
+    if (currentMode === 'single') {
+      wfOnlyEls.forEach(el => { if (el) el.classList.add('hidden'); });
+      if (selectionToolbar) selectionToolbar.classList.add('hidden');
+    } else {
+      wfOnlyEls.forEach(el => { if (el) el.classList.remove('hidden'); });
+    }
+  }
+
+  // 绑定两处模式切换按钮
+  allModeBtns.forEach(btn => {
     btn.addEventListener('click', () => switchMode(btn.dataset.mode));
   });
 
   // ================================================================
-  // =================== WATERFALL: Persistence =====================
+  // =================== WATERFALL: Persistence ======================
   // ================================================================
   function wfLoadItems() {
     try {
@@ -879,14 +920,14 @@
   }
 
   // ================================================================
-  // =================== WATERFALL: Render ==========================
+  // =================== WATERFALL: Render ===========================
   // ================================================================
   function wfRender() {
     if (!wfGrid) return;
     wfGrid.innerHTML = '';
 
     if (wfItems.length === 0) {
-      wfGrid.innerHTML = '<div class="wf-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accents-3);margin-bottom:8px;"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg><div>输入提示词并点击"生成视频"开始批量生成</div></div>';
+      wfGrid.innerHTML = '<div class="wf-empty"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accents-3);margin-bottom:8px;"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect><line x1="7" y1="2" x2="7" y2="22"></line><line x1="17" y1="2" x2="17" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line></svg><div class="empty-title">等待生成</div><div class="empty-subtitle">输入提示词并点击"开始"批量生成</div></div>';
       return;
     }
 
@@ -966,7 +1007,7 @@
   }
 
   // ================================================================
-  // =================== WATERFALL: Selection =======================
+  // =================== WATERFALL: Selection ========================
   // ================================================================
   function wfEnterSelectionMode() {
     wfSelectionMode = true;
@@ -997,7 +1038,7 @@
   }
 
   // ================================================================
-  // =================== WATERFALL: Lightbox ========================
+  // =================== WATERFALL: Lightbox =========================
   // ================================================================
   function wfGetDoneItems() {
     return wfItems.filter(item => item.status === 'done' && extractVideoUrl(item));
@@ -1045,7 +1086,7 @@
   });
 
   // ================================================================
-  // =================== WATERFALL: Floating Bar ====================
+  // =================== FLOATING BAR BUTTONS ========================
   // ================================================================
 
   function wfSetBarButtons(running, stopping = false) {
@@ -1053,7 +1094,6 @@
       if (running || stopping) {
         wfStartBtn.classList.add('hidden');
         wfStopBtn.classList.remove('hidden');
-        // Update stop button text based on state
         if (stopping) {
           wfStopBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg> 等待完成...';
           wfStopBtn.disabled = true;
@@ -1069,11 +1109,19 @@
     }
   }
 
-  // Start / Stop
-  if (wfStartBtn) wfStartBtn.addEventListener('click', () => startWaterfall());
-  if (wfStopBtn) wfStopBtn.addEventListener('click', () => stopWaterfall());
+  // 浮动栏：生成按钮（两种模式共用）
+  if (wfStartBtn) wfStartBtn.addEventListener('click', () => {
+    if (currentMode === 'waterfall') startWaterfall();
+    else generateVideo();
+  });
 
-  // Clear all
+  // 浮动栏：停止按钮（两种模式共用）
+  if (wfStopBtn) wfStopBtn.addEventListener('click', () => {
+    if (currentMode === 'waterfall') stopWaterfall();
+    else stopGeneration();
+  });
+
+  // 清空
   if (wfClearBtn) wfClearBtn.addEventListener('click', () => {
     if (waterfallRunning) stopWaterfall();
     wfItems.forEach(item => _deleteCachedFile(item, { notifyOnFail: false }));
@@ -1083,10 +1131,9 @@
     toast('已清空所有视频', 'success');
   });
 
-  // Batch select toggle
+  // 批量选择
   if (floatSelectAll) floatSelectAll.addEventListener('click', () => {
     if (wfSelectionMode) {
-      // Already in selection mode: select all
       wfItems.forEach(item => { if (item.status === 'done') wfSelected.add(item.id); });
       wfRender(); wfUpdateFloatingBar();
     } else {
@@ -1117,12 +1164,11 @@
     toast('开始下载 ' + selected.length + ' 个视频', 'success');
   });
 
-  // Floating bar drag
+  // 浮动栏拖拽
   if (wfFloatingBar) {
     let dragging = false, dragX = 0, dragY = 0, startLeft = 0, startTop = 0;
     wfFloatingBar.style.touchAction = 'none';
     wfFloatingBar.addEventListener('pointerdown', (e) => {
-      // Check if click is on a button or any element inside a button (like SVG icons)
       if (e.target.closest('button')) return;
       dragging = true; dragX = e.clientX; dragY = e.clientY;
       const rect = wfFloatingBar.getBoundingClientRect();
@@ -1140,7 +1186,7 @@
   }
 
   // ================================================================
-  // =================== WATERFALL: Generate ========================
+  // =================== WATERFALL: Generate =========================
   // ================================================================
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -1155,6 +1201,7 @@
     };
   }
   function wfGetConcurrent() { return wfConcurrent ? parseInt(wfConcurrent.value, 10) : 1; }
+  function wfGetMaxCount() { return wfMaxCount ? parseInt(wfMaxCount.value, 10) : 20; }
 
   async function startWaterfall() {
     const prompt = wfGetPrompt();
@@ -1167,6 +1214,7 @@
     waterfallStopping = false;
     waterfallAbortControllers = [];
     waterfallActiveCount = 0;
+    waterfallTotalCreated = 0;
     wfSetBarButtons(true);
     setStatus('connected', '瀑布流生成中...');
 
@@ -1182,7 +1230,12 @@
     waterfallAbortControllers = [];
     waterfallActiveCount = 0;
     wfSetBarButtons(false);
-    setStatus('', '就绪');
+    if (waterfallTotalCreated >= wfGetMaxCount()) {
+      toast('已达到最大生成数量 (' + waterfallTotalCreated + ')', 'info');
+      setStatus('', '已完成 (' + waterfallTotalCreated + '/' + wfGetMaxCount() + ')');
+    } else {
+      setStatus('', '就绪');
+    }
   }
 
   async function waterfallWorker(workerId, authKey) {
@@ -1190,7 +1243,6 @@
     const MAX_CONSECUTIVE_ERRORS = 5;
 
     while (waterfallRunning) {
-      // Check if we should stop accepting new tasks (graceful stop)
       if (!waterfallRunning) break;
 
       if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
@@ -1204,7 +1256,13 @@
       const prompt = wfGetPrompt();
       if (!prompt) break;
 
-      // Increment active count before starting
+      const maxCount = wfGetMaxCount();
+      if (waterfallTotalCreated >= maxCount) {
+        waterfallRunning = false;
+        break;
+      }
+      waterfallTotalCreated++;
+
       waterfallActiveCount++;
 
       const itemId = genId();
@@ -1217,7 +1275,6 @@
       const startTime = Date.now();
 
       try {
-        // Step 1: Create task via /v1/public/video/start
         const startBody = {
           prompt: prompt,
           aspect_ratio: params.aspect_ratio,
@@ -1240,7 +1297,6 @@
         const taskId = startData && startData.task_id ? String(startData.task_id) : '';
         if (!taskId) throw new Error('Missing task_id');
 
-        // Step 2: Connect to SSE stream
         const sseRes = await fetch('/v1/public/video/sse?task_id=' + encodeURIComponent(taskId), {
           signal: controller.signal
         });
@@ -1266,7 +1322,6 @@
             if (data === '[DONE]') continue;
             try {
               const parsed = JSON.parse(data);
-              // Handle credits_update from backend
               if (parsed.type === 'credits_update' && parsed.credits !== undefined) {
                 const creditsEl = document.getElementById('credits-value');
                 if (creditsEl) creditsEl.textContent = parsed.credits;
@@ -1276,7 +1331,6 @@
                 toast(parsed.message || '积分不足', 'error');
                 continue;
               }
-              // Standard OpenAI-compatible SSE chunks
               const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
               if (delta && delta.content) {
                 fullContent += delta.content;
@@ -1307,13 +1361,11 @@
         }
         wfSaveItems(); wfRender();
         toast('视频生成完成', 'success');
-        consecutiveErrors = 0; // Reset on success
+        consecutiveErrors = 0;
 
-        // Auto scroll
         if (wfAutoScroll && wfAutoScroll.checked && wfGrid) {
           wfGrid.scrollIntoView({ behavior: 'smooth', block: 'end' });
         }
-        // Auto download
         if (wfAutoDownload && wfAutoDownload.checked) {
           const doneItem = wfItems.find(i => i.id === itemId);
           if (doneItem) {
@@ -1329,7 +1381,6 @@
 
       } catch (e) {
         if (e.name === 'AbortError') {
-          // Aborted - mark as error and exit
           const idx = wfItems.findIndex(i => i.id === itemId);
           if (idx !== -1) wfItems[idx].status = 'error';
           wfSaveItems(); wfRender();
@@ -1341,24 +1392,19 @@
         if (idx !== -1) wfItems[idx].status = 'error';
         wfSaveItems(); wfRender();
         toast('Worker ' + workerId + ' 生成失败: ' + e.message, 'error');
-        // Delay before retry
         await sleep(2000);
       }
 
-      // Decrement active count after finishing (success or error)
       waterfallActiveCount--;
 
-      // Check if graceful stop is requested and all tasks are done
       if (waterfallStopping) {
         const stillGenerating = wfItems.filter(item => item.status === 'generating').length;
         if (stillGenerating === 0) {
-          // All tasks completed, finalize the stop
           waterfallStopping = false;
           wfSetBarButtons(false);
           setStatus('', '已完成');
           toast('所有视频已完成', 'success');
         } else {
-          // Update status to show remaining count
           setStatus('connecting', '等待 ' + stillGenerating + ' 个视频完成...');
         }
         break;
@@ -1367,47 +1413,26 @@
   }
 
   function stopWaterfall() {
-    // Graceful stop: stop accepting new tasks, wait for in-progress to finish
     waterfallRunning = false;
     waterfallStopping = true;
 
-    // Count how many items are still generating
     const generatingCount = wfItems.filter(item => item.status === 'generating').length;
 
     if (generatingCount > 0) {
-      // Show "waiting for completion" status
-      wfSetBarButtons(false, true);  // passing stopping=true
+      wfSetBarButtons(false, true);
       setStatus('connecting', '等待 ' + generatingCount + ' 个视频完成...');
       toast('停止生成中，等待 ' + generatingCount + ' 个视频完成...', 'info');
     } else {
-      // No videos in progress, stop immediately
       waterfallStopping = false;
       wfSetBarButtons(false);
       setStatus('', '已停止');
       toast('已停止生成', 'info');
     }
-
-    // Note: We do NOT abort the controllers here - let in-progress requests finish naturally
-    // The workers will exit after their current task completes because waterfallRunning is false
   }
 
   // ================================================================
-  // =================== EVENT LISTENERS ============================
+  // =================== EVENT LISTENERS =============================
   // ================================================================
-  if (generateBtn) {
-    generateBtn.addEventListener('click', () => {
-      if (currentMode === 'waterfall') startWaterfall();
-      else generateVideo();
-    });
-  }
-
-  if (stopBtn) {
-    stopBtn.addEventListener('click', () => {
-      if (currentMode === 'waterfall') stopWaterfall();
-      else stopGeneration();
-    });
-  }
-
   if (promptInput) {
     promptInput.addEventListener('keydown', (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); generateVideo(); }
@@ -1420,7 +1445,7 @@
     });
   }
 
-  // Update status panel when selects change
+  // 更新状态面板
   [ratioSelect, lengthSelect, resolutionSelect, presetSelect].forEach(sel => {
     if (sel) sel.addEventListener('change', updateStatusPanel);
   });
@@ -1429,7 +1454,17 @@
     clearHistoryBtn.addEventListener('click', clearHistory);
   }
 
-  // Init
+  if (historyToggleBtn) {
+    historyToggleBtn.addEventListener('click', () => {
+      historyCollapsed = !historyCollapsed;
+      renderHistory();
+    });
+  }
+
+  // ================================================================
+  // =================== INIT =======================================
+  // ================================================================
   updateStatusPanel();
   renderHistory();
+  updateFloatingBarForMode(); // 初始化时隐藏瀑布流专用按钮
 })();
