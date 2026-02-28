@@ -94,7 +94,7 @@
   const WF_KEY = 'grok2api_wf_items';
   const MAX_HISTORY = 20;
 
-  let currentMode = 'single';
+  let currentMode = 'waterfall';
   let isGenerating = false;
   let abortController = null;
   let generateStartTime = 0;
@@ -1478,5 +1478,5 @@
   // ================================================================
   updateStatusPanel();
   renderHistory();
-  updateFloatingBarForMode(); // 初始化时隐藏瀑布流专用按钮
+  switchMode('waterfall'); // 默认进入瀑布流模式
 })();
