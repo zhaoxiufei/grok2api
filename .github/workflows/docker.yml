@@ -107,3 +107,23 @@ jobs:
               ${tag}-amd64 \
               ${tag}-arm64
           done
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build-and-push, merge-manifests]
+    if: always()
+
+    steps:
+      - name: Bark 推送构建通知
+        run: |
+          if [ "${{ needs.build-and-push.result }}" = "success" ] && [ "${{ needs.merge-manifests.result }}" = "success" ]; then
+            STATUS="✅ 构建成功"
+          elif [ "${{ needs.merge-manifests.result }}" = "skipped" ] && [ "${{ needs.build-and-push.result }}" = "success" ]; then
+            STATUS="✅ 构建成功(PR)"
+          else
+            STATUS="❌ 构建失败"
+          fi
+          MESSAGE="${STATUS} ${GITHUB_REPOSITORY} @${GITHUB_REF_NAME}"
+          ENCODED_MESSAGE=$(python3 -c "import urllib.parse; print(urllib.parse.quote('${MESSAGE}'))")
+          curl -sS -o /dev/null -w "%{http_code}" \
+            "https://api.day.app/${{ secrets.BARK_KEY }}/${ENCODED_MESSAGE}?group=grok2api"
