@@ -886,6 +886,15 @@
     try {
       const raw = localStorage.getItem(WF_KEY);
       wfItems = raw ? JSON.parse(raw) : [];
+      // 清理旧数据中残留的脏内容（如 "I generated a video..." 后缀）
+      let dirty = false;
+      wfItems.forEach(item => {
+        if (item.content) {
+          const cleaned = stripThinkingContent(item.content);
+          if (cleaned !== item.content) { item.content = cleaned; dirty = true; }
+        }
+      });
+      if (dirty) wfSaveItems();
     } catch (e) { wfItems = []; }
   }
 
@@ -914,9 +923,12 @@
   function extractVideoUrl(item) {
     if (!item || !item.content) return null;
     const c = item.content.trim();
-    if (/^https?:\/\/\S+$/.test(c)) return c;
-    const match = c.match(/https?:\/\/[^\s"'<>]+/i);
-    return match ? match[0] : null;
+    // 优先匹配视频文件 URL（精确到扩展名，避免后缀脏数据）
+    const videoMatch = c.match(/https?:\/\/[^\s"'<>]+\.(mp4|webm|mov)(?:\?[^\s"'<>]*)?/i);
+    if (videoMatch) return videoMatch[0];
+    // 回退：匹配第一个 URL（在空白/引号/尖括号处截断）
+    const anyMatch = c.match(/https?:\/\/[^\s"'<>]+/i);
+    return anyMatch ? anyMatch[0] : null;
   }
 
   // ================================================================
