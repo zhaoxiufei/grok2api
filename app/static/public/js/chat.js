@@ -18,12 +18,262 @@
   const fileBadge = document.getElementById('fileBadge');
   const fileName = document.getElementById('fileName');
   const fileRemoveBtn = document.getElementById('fileRemoveBtn');
+  const historyPanel = document.getElementById('historyPanel');
+  const historyList = document.getElementById('historyList');
+  const newChatBtn = document.getElementById('newChatBtn');
+  const clearAllBtn = document.getElementById('clearAllBtn');
+  const historyToggleBtn = document.getElementById('historyToggleBtn');
+  const historyOverlay = document.getElementById('historyOverlay');
 
   let messageHistory = [];
   let isSending = false;
   let abortController = null;
   let attachment = null;
   const feedbackUrl = 'https://github.com/WangXingFan/grok2api/issues/new';
+
+  // ==================== SessionManager ====================
+  const STORAGE_KEY = 'grok_chat_sessions';
+  const ACTIVE_KEY = 'grok_chat_active_id';
+
+  function loadSessions() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return [];
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return [];
+      // 按 updatedAt 倒序
+      list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+      return list;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveSessions(list) {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    } catch (e) {
+      // localStorage 容量不足时静默失败
+      console.warn('保存会话失败:', e);
+    }
+  }
+
+  function getActiveId() {
+    return localStorage.getItem(ACTIVE_KEY) || '';
+  }
+
+  function setActiveId(id) {
+    if (id) {
+      localStorage.setItem(ACTIVE_KEY, id);
+    } else {
+      localStorage.removeItem(ACTIVE_KEY);
+    }
+  }
+
+  function createSession() {
+    const now = Date.now();
+    const session = {
+      id: crypto.randomUUID ? crypto.randomUUID() : (now.toString(36) + Math.random().toString(36).slice(2)),
+      title: '新会话',
+      createdAt: now,
+      updatedAt: now,
+      messages: []
+    };
+    const list = loadSessions();
+    list.unshift(session);
+    saveSessions(list);
+    setActiveId(session.id);
+    return session;
+  }
+
+  function deleteSession(id) {
+    let list = loadSessions();
+    list = list.filter(s => s.id !== id);
+    saveSessions(list);
+    if (getActiveId() === id) {
+      // 切换到第一个或新建
+      if (list.length > 0) {
+        setActiveId(list[0].id);
+        switchSession(list[0].id);
+      } else {
+        const fresh = createSession();
+        switchSession(fresh.id);
+      }
+    }
+    renderHistoryList();
+  }
+
+  function clearAllSessions() {
+    saveSessions([]);
+    setActiveId('');
+    const fresh = createSession();
+    switchSession(fresh.id);
+    renderHistoryList();
+  }
+
+  function updateSession(id, updates) {
+    const list = loadSessions();
+    const session = list.find(s => s.id === id);
+    if (!session) return;
+    if (updates.title !== undefined) session.title = updates.title;
+    if (updates.messages !== undefined) session.messages = updates.messages;
+    session.updatedAt = Date.now();
+    saveSessions(list);
+    renderHistoryList();
+  }
+
+  function getSession(id) {
+    const list = loadSessions();
+    return list.find(s => s.id === id) || null;
+  }
+
+  // ==================== 历史列表 UI ====================
+  function formatTime(ts) {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const now = new Date();
+    const isToday = d.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const isYesterday = d.toDateString() === yesterday.toDateString();
+    const pad = n => String(n).padStart(2, '0');
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    if (isToday) return time;
+    if (isYesterday) return `昨天 ${time}`;
+    return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${time}`;
+  }
+
+  function renderHistoryList() {
+    if (!historyList) return;
+    const list = loadSessions();
+    const activeId = getActiveId();
+    historyList.innerHTML = '';
+
+    if (list.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'chat-empty';
+      empty.style.padding = '24px 0';
+      empty.style.fontSize = '12px';
+      empty.textContent = '暂无会话记录';
+      historyList.appendChild(empty);
+      return;
+    }
+
+    for (const session of list) {
+      const item = document.createElement('div');
+      item.className = 'history-item' + (session.id === activeId ? ' active' : '');
+      item.dataset.id = session.id;
+
+      const info = document.createElement('div');
+      info.className = 'history-item-info';
+
+      const title = document.createElement('div');
+      title.className = 'history-item-title';
+      title.textContent = session.title || '新会话';
+
+      const time = document.createElement('div');
+      time.className = 'history-item-time';
+      time.textContent = formatTime(session.updatedAt || session.createdAt);
+
+      info.appendChild(title);
+      info.appendChild(time);
+
+      const del = document.createElement('button');
+      del.className = 'history-item-delete';
+      del.type = 'button';
+      del.title = '删除';
+      del.innerHTML = '&times;';
+      del.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm('确认删除此会话？')) {
+          deleteSession(session.id);
+        }
+      });
+
+      item.appendChild(info);
+      item.appendChild(del);
+
+      item.addEventListener('click', () => {
+        if (session.id === getActiveId()) return;
+        switchSession(session.id);
+        closeHistoryPanel();
+      });
+
+      historyList.appendChild(item);
+    }
+  }
+
+  function switchSession(id) {
+    // 如果有进行中的请求，先中止
+    if (isSending && abortController) {
+      abortController.abort();
+      setSendingState(false);
+      abortController = null;
+    }
+
+    setActiveId(id);
+    const session = getSession(id);
+    if (!session) return;
+
+    // 恢复消息到聊天区
+    restoreSession(session);
+    renderHistoryList();
+  }
+
+  function restoreSession(session) {
+    // 清空聊天区
+    messageHistory = [];
+    if (chatLog) chatLog.innerHTML = '';
+
+    if (!session.messages || session.messages.length === 0) {
+      showEmptyState();
+      return;
+    }
+
+    hideEmptyState();
+    // 恢复每条消息到 UI
+    for (const msg of session.messages) {
+      const displayContent = typeof msg.content === 'string' ? msg.content : (msg.content || '');
+      const entry = createMessage(msg.role, '');
+      if (entry) {
+        updateMessage(entry, displayContent, true);
+      }
+      messageHistory.push({ role: msg.role, content: msg.content });
+    }
+    scrollToBottom();
+  }
+
+  // ==================== 移动端侧边栏控制 ====================
+  function openHistoryPanel() {
+    if (historyPanel) historyPanel.classList.add('open');
+    if (historyOverlay) historyOverlay.classList.add('open');
+  }
+
+  function closeHistoryPanel() {
+    if (historyPanel) historyPanel.classList.remove('open');
+    if (historyOverlay) historyOverlay.classList.remove('open');
+  }
+
+  // ==================== 同步会话到 storage ====================
+  function syncCurrentSession() {
+    const activeId = getActiveId();
+    if (!activeId) return;
+    const session = getSession(activeId);
+    if (!session) return;
+
+    // 更新标题：首次用户消息的前 30 字符
+    const updates = { messages: [...messageHistory] };
+    if (session.title === '新会话' && messageHistory.length > 0) {
+      const firstUserMsg = messageHistory.find(m => m.role === 'user');
+      if (firstUserMsg) {
+        const text = typeof firstUserMsg.content === 'string'
+          ? firstUserMsg.content
+          : '新会话';
+        updates.title = text.slice(0, 30).replace(/\n/g, ' ');
+      }
+    }
+    updateSession(activeId, updates);
+  }
 
   function toast(message, type) {
     if (typeof showToast === 'function') {
@@ -612,6 +862,11 @@
       chatLog.innerHTML = '';
     }
     showEmptyState();
+    // 同步当前会话为空消息
+    const activeId = getActiveId();
+    if (activeId) {
+      updateSession(activeId, { messages: [] });
+    }
   }
 
   function buildMessages() {
@@ -873,6 +1128,7 @@
     messageHistory.push({ role: 'user', content });
     if (promptInput) promptInput.value = '';
     clearAttachment();
+    syncCurrentSession();
 
     const assistantEntry = createMessage('assistant', '');
     setSendingState(true);
@@ -914,6 +1170,7 @@
         if (!assistantEntry.committed) {
           messageHistory.push({ role: 'assistant', content: assistantEntry.raw || '' });
           assistantEntry.committed = true;
+          syncCurrentSession();
         }
       } else {
         updateMessage(assistantEntry, `请求失败: ${e.message || e}`, true);
@@ -954,6 +1211,7 @@
             }
             messageHistory.push({ role: 'assistant', content: assistantText });
             assistantEntry.committed = true;
+            syncCurrentSession();
             return;
           }
           try {
@@ -986,6 +1244,7 @@
     }
     messageHistory.push({ role: 'assistant', content: assistantText });
     assistantEntry.committed = true;
+    syncCurrentSession();
   }
 
   function toggleSettings(show) {
@@ -1041,9 +1300,59 @@
     if (fileRemoveBtn) {
       fileRemoveBtn.addEventListener('click', clearAttachment);
     }
+
+    // 会话历史相关事件
+    if (newChatBtn) {
+      newChatBtn.addEventListener('click', () => {
+        const session = createSession();
+        switchSession(session.id);
+        renderHistoryList();
+        closeHistoryPanel();
+      });
+    }
+    if (clearAllBtn) {
+      clearAllBtn.addEventListener('click', () => {
+        if (confirm('确认清空所有会话记录？')) {
+          clearAllSessions();
+        }
+      });
+    }
+    if (historyToggleBtn) {
+      historyToggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (historyPanel && historyPanel.classList.contains('open')) {
+          closeHistoryPanel();
+        } else {
+          openHistoryPanel();
+        }
+      });
+    }
+    if (historyOverlay) {
+      historyOverlay.addEventListener('click', closeHistoryPanel);
+    }
+  }
+
+  // ==================== 初始化 ====================
+  function initSession() {
+    const sessions = loadSessions();
+    let activeId = getActiveId();
+    let session = activeId ? sessions.find(s => s.id === activeId) : null;
+
+    if (!session) {
+      if (sessions.length > 0) {
+        session = sessions[0];
+        setActiveId(session.id);
+      } else {
+        session = createSession();
+      }
+    }
+
+    renderHistoryList();
+    restoreSession(session);
   }
 
   updateRangeValues();
   loadModels();
   bindEvents();
+  initSession();
 })();

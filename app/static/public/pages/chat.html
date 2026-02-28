@@ -10,105 +10,138 @@
   <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-sans/style.css" rel="stylesheet">
   <link href="https://cdn.jsdelivr.net/npm/geist@1.0.0/dist/fonts/geist-mono/style.css" rel="stylesheet">
   <link href="/static/common/css/common.css?v=1.5.0" rel="stylesheet">
-  <link href="/static/public/css/chat.css?v=1.5.0" rel="stylesheet">
-  <link href="/static/common/css/toast.css" rel="stylesheet">
+  <link href="/static/public/css/chat.css?v=1.6.0" rel="stylesheet">
+  <link href="/static/common/css/toast.css?v=1.6.0" rel="stylesheet">
 </head>
 
 <body class="min-h-screen flex flex-col" style="background-color: var(--bg);">
   <div id="toast-container" class="toast-container"></div>
   <div id="app-header"></div>
 
-  <main class="flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in chat-main">
-    <div class="chat-shell">
-      <div class="chat-title">
+  <main class="flex-1 container mx-auto max-w-5xl px-6 py-8 fade-in">
+    <div class="space-y-6">
+      <div class="flex items-center justify-between">
         <div>
-          <h2 class="chat-title-text">Chat 聊天</h2>
-          <p class="chat-subtitle">通过 chat 接口与 Grok 进行会话聊天</p>
+          <h2 class="text-2xl font-semibold tracking-tight">Chat 聊天</h2>
+          <p class="text-[var(--accents-4)] mt-1 text-sm">通过 chat 接口与 Grok 进行会话聊天</p>
         </div>
         <span id="statusText" class="status-text">就绪</span>
       </div>
+      <div class="h-px bg-[var(--border)]"></div>
 
-      <div id="chatLog" class="chat-thread">
-        <div id="emptyState" class="chat-empty">输入一条消息开始对话。</div>
-      </div>
-
-      <div class="composer-shell">
-        <div class="composer-input">
-          <button id="attachBtn" class="icon-btn" type="button" title="上传文件">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
-              stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.9-9.9a3.5 3.5 0 0 1 4.95 4.95l-9.9 9.9a2 2 0 0 1-2.83-2.83l8.49-8.49"></path>
-            </svg>
-          </button>
-          <input id="fileInput" class="file-input" type="file" />
-          <div id="fileBadge" class="file-badge hidden">
-            <span id="fileName" class="file-name"></span>
-            <button id="fileRemoveBtn" class="file-remove" type="button">×</button>
+      <div class="chat-top-grid">
+        <!-- 左侧：聊天卡片 (大) -->
+        <div class="chat-card chat-card-main">
+          <div id="chatLog" class="chat-thread">
+            <div id="emptyState" class="chat-empty">输入一条消息开始对话。</div>
           </div>
-          <textarea id="promptInput" class="composer-textarea" placeholder="询问任何内容"></textarea>
-          <div class="composer-actions">
-            <div class="model-chip">
-              <select id="modelSelect" class="model-select"></select>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <polyline points="6 9 12 15 18 9"></polyline>
-              </svg>
-            </div>
-            <div class="popover hidden">
-              <button id="settingsToggle" class="icon-btn" type="button" title="设置">
+
+          <div class="composer-shell">
+            <div class="composer-input">
+              <button id="attachBtn" class="icon-btn" type="button" title="上传文件">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                   stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="3"></circle>
-                  <path
-                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.09c0 .69.4 1.31 1.02 1.58.52.23 1.12.2 1.6-.07l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.45.45-.58 1.12-.33 1.72.25.6.82 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.69 0-1.31.4-1.51 1Z">
-                  </path>
+                  <path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.9-9.9a3.5 3.5 0 0 1 4.95 4.95l-9.9 9.9a2 2 0 0 1-2.83-2.83l8.49-8.49"></path>
                 </svg>
               </button>
-              <div id="settingsPanel" class="settings-panel hidden">
-                <div class="settings-grid">
-                  <div class="settings-block">
-                    <label class="field-label" for="reasoningSelect">推理强度</label>
-                    <select id="reasoningSelect" class="geist-input">
-                      <option value="">跟随配置</option>
-                      <option value="none">关闭</option>
-                      <option value="minimal">Minimal</option>
-                      <option value="low">Low</option>
-                      <option value="medium">Medium</option>
-                      <option value="high">High</option>
-                      <option value="xhigh">XHigh</option>
-                    </select>
-                  </div>
-                  <div class="settings-block">
-                    <label class="field-label" for="tempRange">温度</label>
-                    <div class="range-row">
-                      <input id="tempRange" type="range" min="0" max="2" step="0.05" value="0.8">
-                      <span id="tempValue" class="range-value">0.8</span>
+              <input id="fileInput" class="file-input" type="file" />
+              <div id="fileBadge" class="file-badge hidden">
+                <span id="fileName" class="file-name"></span>
+                <button id="fileRemoveBtn" class="file-remove" type="button">×</button>
+              </div>
+              <textarea id="promptInput" class="composer-textarea" placeholder="询问任何内容"></textarea>
+              <div class="composer-actions">
+                <button id="historyToggleBtn" class="icon-btn history-toggle-btn" type="button" title="会话记录">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                  </svg>
+                </button>
+                <div class="model-chip">
+                  <select id="modelSelect" class="model-select"></select>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </div>
+                <div class="popover hidden">
+                  <button id="settingsToggle" class="icon-btn" type="button" title="设置">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                      stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="3"></circle>
+                      <path
+                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01A1.65 1.65 0 0 0 9 4.6V4a2 2 0 0 1 4 0v.09c0 .69.4 1.31 1.02 1.58.52.23 1.12.2 1.6-.07l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06c-.45.45-.58 1.12-.33 1.72.25.6.82 1 1.51 1H21a2 2 0 0 1 0 4h-.09c-.69 0-1.31.4-1.51 1Z">
+                      </path>
+                    </svg>
+                  </button>
+                  <div id="settingsPanel" class="settings-panel hidden">
+                    <div class="settings-grid">
+                      <div class="settings-block">
+                        <label class="field-label" for="reasoningSelect">推理强度</label>
+                        <select id="reasoningSelect" class="geist-input">
+                          <option value="">跟随配置</option>
+                          <option value="none">关闭</option>
+                          <option value="minimal">Minimal</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="xhigh">XHigh</option>
+                        </select>
+                      </div>
+                      <div class="settings-block">
+                        <label class="field-label" for="tempRange">温度</label>
+                        <div class="range-row">
+                          <input id="tempRange" type="range" min="0" max="2" step="0.05" value="0.8">
+                          <span id="tempValue" class="range-value">0.8</span>
+                        </div>
+                      </div>
+                      <div class="settings-block">
+                        <label class="field-label" for="topPRange">Top P</label>
+                        <div class="range-row">
+                          <input id="topPRange" type="range" min="0" max="1" step="0.05" value="0.95">
+                          <span id="topPValue" class="range-value">0.95</span>
+                        </div>
+                      </div>
+                      <div class="settings-block settings-block-full">
+                        <label class="field-label" for="systemInput">System Prompt</label>
+                        <textarea id="systemInput" class="geist-input chat-input" placeholder="可选，设置系统提示词"></textarea>
+                      </div>
                     </div>
-                  </div>
-                  <div class="settings-block">
-                    <label class="field-label" for="topPRange">Top P</label>
-                    <div class="range-row">
-                      <input id="topPRange" type="range" min="0" max="1" step="0.05" value="0.95">
-                      <span id="topPValue" class="range-value">0.95</span>
-                    </div>
-                  </div>
-                  <div class="settings-block settings-block-full">
-                    <label class="field-label" for="systemInput">System Prompt</label>
-                    <textarea id="systemInput" class="geist-input chat-input" placeholder="可选，设置系统提示词"></textarea>
                   </div>
                 </div>
+                <button id="sendBtn" class="send-btn" type="button" aria-label="Send">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M22 2L11 13"></path>
+                    <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+                  </svg>
+                </button>
               </div>
             </div>
-            <button id="sendBtn" class="send-btn" type="button" aria-label="Send">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-                stroke-linecap="round" stroke-linejoin="round">
-                <path d="M22 2L11 13"></path>
-                <path d="M22 2L15 22L11 13L2 9L22 2Z"></path>
+          </div>
+        </div>
+
+        <!-- 右侧：历史记录卡片 (小) -->
+        <aside id="historyPanel" class="chat-card chat-card-history">
+          <div class="history-header">
+            <span class="history-title">会话记录</span>
+            <button id="newChatBtn" class="history-btn" type="button" title="新建会话">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
               </svg>
             </button>
           </div>
-        </div>
+          <div id="historyList" class="history-list"></div>
+          <div class="history-footer">
+            <button id="clearAllBtn" class="history-footer-btn" type="button">清空所有</button>
+          </div>
+        </aside>
       </div>
+
+      <div id="historyOverlay" class="history-overlay"></div>
     </div>
   </main>
 
@@ -117,8 +150,8 @@
   <script src="/static/common/js/admin-auth.js?v=1.5.0"></script>
   <script src="/static/common/js/public-header.js?v=1.5.0"></script>
   <script src="/static/common/js/footer.js?v=1.5.0"></script>
-  <script src="/static/common/js/toast.js"></script>
-  <script src="/static/public/js/chat.js?v=1.5.0"></script>
+  <script src="/static/common/js/toast.js?v=1.6.0"></script>
+  <script src="/static/public/js/chat.js?v=1.6.0"></script>
 </body>
 
 </html>
