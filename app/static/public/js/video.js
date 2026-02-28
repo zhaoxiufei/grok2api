@@ -353,7 +353,7 @@
     cleaned = cleaned.replace(/<think>[\s\S]*/g, '');
     cleaned = cleaned.replace(/正在.*?进度\d+%\s*/g, '');
     cleaned = cleaned.replace(/正在对视频进行超分辨率\s*/g, '');
-    cleaned = cleaned.replace(/I generated a video with the prompt:.*$/g, '');
+    cleaned = cleaned.replace(/I generated a video with the prompt:[\s\S]*$/g, '');
     return cleaned.trim();
   }
 
@@ -914,7 +914,7 @@
   function extractVideoUrl(item) {
     if (!item || !item.content) return null;
     const c = item.content.trim();
-    if (/^https?:\/\//.test(c)) return c;
+    if (/^https?:\/\/\S+$/.test(c)) return c;
     const match = c.match(/https?:\/\/[^\s"'<>]+/i);
     return match ? match[0] : null;
   }
