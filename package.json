@@ -1,0 +1,11 @@
+{
+  "name": "grok2api-tailwind-build",
+  "private": true,
+  "scripts": {
+    "tailwind:build": "tailwindcss -c tailwind.config.js -i ./app/static/common/css/tailwind.input.css -o ./app/static/common/css/tailwind.css --minify",
+    "tailwind:watch": "tailwindcss -c tailwind.config.js -i ./app/static/common/css/tailwind.input.css -o ./app/static/common/css/tailwind.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.17"
+  }
+}

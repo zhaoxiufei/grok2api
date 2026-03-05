@@ -63,3 +63,7 @@ config.local.toml
 CLAUDE.md
 nul
 .ace-tool/
+
+# Node
+node_modules/
+npm-debug.log*
