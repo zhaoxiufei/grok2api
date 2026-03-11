@@ -5,9 +5,7 @@
   const promptInput = document.getElementById('promptInput');
   const ratioSelect = document.getElementById('ratioSelect');
   const concurrentSelect = document.getElementById('concurrentSelect');
-  const autoScrollToggle = document.getElementById('autoScrollToggle');
   const autoDownloadToggle = document.getElementById('autoDownloadToggle');
-  const reverseInsertToggle = document.getElementById('reverseInsertToggle');
   const autoFilterToggle = document.getElementById('autoFilterToggle');
   const nsfwSelect = document.getElementById('nsfwSelect');
   const selectFolderBtn = document.getElementById('selectFolderBtn');
@@ -42,6 +40,14 @@
   let streamSequence = 0;
   const streamImageMap = new Map();
   let finalMinBytesDefault = 100000;
+
+  // 编辑模式状态
+  let currentImagineMode = 'generate';
+  let editFiles = [];
+  let editAbortController = null;
+  let isEditing = false;
+  let editSessionCounter = 0;
+  const IMAGINE_PAGE_MODE_KEY = 'imagine_page_mode';
 
   function toast(message, type) {
     if (typeof showToast === 'function') {
@@ -124,6 +130,260 @@
     } catch (e) {
       // ignore
     }
+  }
+
+  // === 编辑模式：模式切换 ===
+  function setImagineMode(mode) {
+    if (mode !== 'generate' && mode !== 'edit') return;
+    currentImagineMode = mode;
+
+    // 更新按钮激活状态
+    document.querySelectorAll('.imagine-mode-btn').forEach(btn => {
+      if (btn.dataset.imagineMode === mode) {
+        btn.classList.add('active');
+      } else {
+        btn.classList.remove('active');
+      }
+    });
+
+    const settingsGrid = document.querySelector('.settings-grid');
+
+    // 显隐专属区域
+    document.querySelectorAll('.edit-only-section').forEach(el => {
+      el.style.display = mode === 'edit' ? '' : 'none';
+    });
+    document.querySelectorAll('.generate-only-section').forEach(el => {
+      el.style.display = mode === 'generate' ? '' : 'none';
+    });
+
+    // 切换 settings-grid 布局
+    if (settingsGrid) {
+      if (mode === 'edit') {
+        settingsGrid.classList.add('edit-mode');
+      } else {
+        settingsGrid.classList.remove('edit-mode');
+      }
+    }
+
+    // 切换时停止进行中的任务
+    if (mode === 'generate' && isEditing) {
+      abortEdit();
+    }
+    if (mode === 'edit' && isRunning) {
+      stopConnection();
+    }
+
+    // 更新 start 按钮文案
+    if (startBtn) {
+      const span = startBtn.querySelector('span');
+      if (span) {
+        span.textContent = mode === 'edit' ? t('imagine.editStart') : t('imagine.start');
+        if (mode === 'edit') {
+          span.setAttribute('data-i18n', 'imagine.editStart');
+        } else {
+          span.setAttribute('data-i18n', 'imagine.start');
+        }
+      }
+    }
+
+    try {
+      localStorage.setItem(IMAGINE_PAGE_MODE_KEY, mode);
+    } catch (e) {
+      // ignore
+    }
+  }
+
+  // === 编辑模式：文件上传管理 ===
+  function addEditFiles(fileList) {
+    const maxFiles = 3;
+    const maxSize = 50 * 1024 * 1024;
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
+
+    for (const file of fileList) {
+      if (editFiles.length >= maxFiles) {
+        toast(t('imagine.editMaxFiles', { max: maxFiles }), 'warning');
+        break;
+      }
+      if (!allowedTypes.includes(file.type)) {
+        toast(t('imagine.editInvalidType'), 'error');
+        continue;
+      }
+      if (file.size > maxSize) {
+        toast(t('imagine.editFileTooLarge'), 'error');
+        continue;
+      }
+      editFiles.push(file);
+    }
+    renderEditPreviews();
+  }
+
+  function removeEditFile(index) {
+    editFiles.splice(index, 1);
+    renderEditPreviews();
+  }
+
+  function renderEditPreviews() {
+    const grid = document.getElementById('editPreviewGrid');
+    const placeholder = document.getElementById('editUploadPlaceholder');
+    if (!grid) return;
+
+    grid.innerHTML = '';
+
+    if (editFiles.length === 0) {
+      if (placeholder) placeholder.style.display = '';
+      return;
+    }
+    if (placeholder) placeholder.style.display = 'none';
+
+    editFiles.forEach((file, index) => {
+      const item = document.createElement('div');
+      item.className = 'edit-preview-item';
+
+      const img = document.createElement('img');
+      img.src = URL.createObjectURL(file);
+      img.alt = file.name;
+      img.onload = () => URL.revokeObjectURL(img.src);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'edit-preview-remove';
+      removeBtn.textContent = '×';
+      removeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        removeEditFile(index);
+      });
+
+      item.appendChild(img);
+      item.appendChild(removeBtn);
+      grid.appendChild(item);
+    });
+
+    // 未满时显示添加按钮
+    if (editFiles.length < 3) {
+      const addBtn = document.createElement('button');
+      addBtn.className = 'edit-preview-add';
+      addBtn.textContent = '+';
+      addBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const fileInput = document.getElementById('editFileInput');
+        if (fileInput) fileInput.click();
+      });
+      grid.appendChild(addBtn);
+    }
+  }
+
+  // === 编辑模式：编辑请求 ===
+  async function startEdit() {
+    const prompt = promptInput ? promptInput.value.trim() : '';
+    if (!prompt) {
+      toast(t('common.enterPrompt'), 'error');
+      return;
+    }
+    if (editFiles.length === 0) {
+      toast(t('imagine.editNoImages'), 'error');
+      return;
+    }
+
+    const authHeader = await ensureFunctionKey();
+    if (authHeader === null) {
+      toast(t('common.configurePublicKey'), 'error');
+      window.location.href = '/login';
+      return;
+    }
+
+    if (isEditing) return;
+    isEditing = true;
+    editSessionCounter += 1;
+    const sessionId = editSessionCounter;
+    setButtons(true);
+    setStatus('connected', t('common.generating'));
+
+    editAbortController = new AbortController();
+    const ratio = ratioSelect ? ratioSelect.value : '2:3';
+
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('aspect_ratio', ratio);
+    editFiles.forEach(file => {
+      formData.append('image', file);
+    });
+
+    try {
+      const res = await fetch('/v1/function/imagine/edit', {
+        method: 'POST',
+        headers: buildAuthHeaders(authHeader),
+        body: formData,
+        signal: editAbortController.signal,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Edit request failed');
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          if (!part.trim()) continue;
+          let eventType = '';
+          let dataStr = '';
+          for (const line of part.split('\n')) {
+            if (line.startsWith('event:')) {
+              eventType = line.slice(6).trim();
+            } else if (line.startsWith('data:')) {
+              dataStr = line.slice(5).trim();
+            }
+          }
+          if (!dataStr || dataStr === '[DONE]') continue;
+          try {
+            const payload = JSON.parse(dataStr);
+            if (eventType && typeof payload === 'object' && !payload.type) {
+              payload.type = eventType;
+            }
+            // 为每次编辑会话生成唯一 imageId，避免覆盖之前的图片
+            if (payload.type === 'image_generation.partial_image' || payload.type === 'image_generation.completed') {
+              const baseId = payload.image_id || payload.imageId || (payload.index != null ? payload.index : 0);
+              payload.image_id = `edit_s${sessionId}_${baseId}`;
+            }
+            handleMessage(JSON.stringify(payload));
+          } catch (e) {
+            // 忽略解析错误
+          }
+        }
+      }
+
+      toast(t('imagine.editComplete'), 'success');
+    } catch (e) {
+      if (e.name === 'AbortError') {
+        // 用户主动中断
+      } else {
+        toast(e.message || t('common.generationFailed'), 'error');
+      }
+    } finally {
+      isEditing = false;
+      editAbortController = null;
+      setButtons(false);
+      setStatus('', t('common.notConnected'));
+    }
+  }
+
+  function abortEdit() {
+    if (editAbortController) {
+      editAbortController.abort();
+    }
+    isEditing = false;
+    editAbortController = null;
+    setButtons(false);
+    setStatus('', t('common.notConnected'));
   }
 
 
@@ -364,19 +624,7 @@
       item.classList.add('selection-mode');
     }
 
-    if (reverseInsertToggle && reverseInsertToggle.checked) {
-      waterfall.prepend(item);
-    } else {
-      waterfall.appendChild(item);
-    }
-
-    if (autoScrollToggle && autoScrollToggle.checked) {
-      if (reverseInsertToggle && reverseInsertToggle.checked) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }
-    }
+    waterfall.prepend(item);
 
     if (autoDownloadToggle && autoDownloadToggle.checked) {
       const timestamp = Date.now();
@@ -478,11 +726,7 @@
         item.classList.add('selection-mode');
       }
 
-      if (reverseInsertToggle && reverseInsertToggle.checked) {
-        waterfall.prepend(item);
-      } else {
-        waterfall.appendChild(item);
-      }
+      waterfall.prepend(item);
 
       if (imageId) {
         streamImageMap.set(imageId, item);
@@ -504,14 +748,6 @@
 
     setImageStatus(item, isFinal ? 'done' : 'running', isFinal ? t('common.done') : t('common.generating'));
     updateError('');
-
-    if (isNew && autoScrollToggle && autoScrollToggle.checked) {
-      if (reverseInsertToggle && reverseInsertToggle.checked) {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      } else {
-        window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-      }
-    }
 
     if (isFinal && autoDownloadToggle && autoDownloadToggle.checked) {
       const timestamp = Date.now();
@@ -538,7 +774,7 @@
     if (!data || typeof data !== 'object') return;
 
     if (data.type === 'image_generation.partial_image' || data.type === 'image_generation.completed') {
-      const imageId = data.image_id || data.imageId;
+      const imageId = data.image_id || data.imageId || (data.index != null ? `edit_${data.index}` : undefined);
       const payload = data.b64_json || data.url || data.image;
       if (!payload || !imageId) {
         return;
@@ -843,12 +1079,22 @@
   }
 
   if (startBtn) {
-    startBtn.addEventListener('click', () => startConnection());
+    startBtn.addEventListener('click', () => {
+      if (currentImagineMode === 'edit') {
+        startEdit();
+      } else {
+        startConnection();
+      }
+    });
   }
 
   if (stopBtn) {
     stopBtn.addEventListener('click', () => {
-      stopConnection();
+      if (currentImagineMode === 'edit') {
+        abortEdit();
+      } else {
+        stopConnection();
+      }
     });
   }
 
@@ -860,12 +1106,74 @@
     promptInput.addEventListener('keydown', (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault();
-        startConnection();
+        if (currentImagineMode === 'edit') {
+          startEdit();
+        } else {
+          startConnection();
+        }
       }
     });
   }
 
   loadFilterDefaults();
+
+  // 编辑模式切换按钮事件
+  const imagineModeBtns = document.querySelectorAll('.imagine-mode-btn');
+  if (imagineModeBtns.length > 0) {
+    // 恢复持久化的模式
+    const savedPageMode = (() => {
+      try { return localStorage.getItem(IMAGINE_PAGE_MODE_KEY); } catch (e) { return null; }
+    })();
+    if (savedPageMode === 'edit' || savedPageMode === 'generate') {
+      setImagineMode(savedPageMode);
+    }
+
+    imagineModeBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.imagineMode;
+        if (mode) setImagineMode(mode);
+      });
+    });
+  }
+
+  // 编辑模式文件上传事件
+  const editFileInput = document.getElementById('editFileInput');
+  const editUploadArea = document.getElementById('editUploadArea');
+
+  if (editFileInput) {
+    editFileInput.addEventListener('change', () => {
+      if (editFileInput.files && editFileInput.files.length > 0) {
+        addEditFiles(editFileInput.files);
+        editFileInput.value = '';
+      }
+    });
+  }
+
+  if (editUploadArea) {
+    editUploadArea.addEventListener('click', (e) => {
+      // 不在预览按钮上时触发
+      if (e.target.closest('.edit-preview-remove') || e.target.closest('.edit-preview-add')) return;
+      if (editFileInput) editFileInput.click();
+    });
+
+    editUploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      editUploadArea.classList.add('drag-over');
+    });
+
+    editUploadArea.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      editUploadArea.classList.remove('drag-over');
+    });
+
+    editUploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      editUploadArea.classList.remove('drag-over');
+      if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+        addEditFiles(e.dataTransfer.files);
+      }
+    });
+  }
 
   if (ratioSelect) {
     ratioSelect.addEventListener('change', () => {

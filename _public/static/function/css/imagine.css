@@ -186,25 +186,9 @@
   grid-row: 2;
 }
 
-.settings-block-row2b {
-  grid-column: 2;
-  grid-row: 2;
-}
-
 .settings-block-row3 {
   grid-column: 1;
   grid-row: 3;
-}
-
-.settings-block-row3b {
-  grid-column: 2;
-  grid-row: 3;
-}
-
-.settings-block-single {
-  height: 100%;
-  align-self: stretch;
-  justify-content: stretch;
 }
 
 .settings-prompt {
@@ -311,9 +295,7 @@
   .settings-block-prompt,
   .settings-block-duo,
   .settings-block-row2,
-  .settings-block-row2b,
-  .settings-block-row3,
-  .settings-block-row3b {
+  .settings-block-row3 {
     grid-column: 1;
     grid-row: auto;
   }
@@ -847,5 +829,197 @@
   
   .lightbox-next {
     right: 15px;
+  }
+}
+
+/* 模式切换按钮组 */
+.imagine-mode-bar {
+  display: flex;
+  align-items: center;
+}
+
+.imagine-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+  padding: 3px;
+}
+
+.imagine-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--accents-5);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 4px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.imagine-mode-btn:hover {
+  color: var(--accents-7);
+  background: var(--hover-bg);
+}
+
+.imagine-mode-btn.active {
+  background: #000;
+  color: #fff;
+}
+
+/* 图片上传区 */
+.settings-block-upload {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.edit-upload-area {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  min-height: 80px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex: 1;
+}
+
+.edit-upload-area:hover,
+.edit-upload-area.drag-over {
+  border-color: #000;
+  background: #f9f9f9;
+}
+
+.edit-upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--accents-4);
+  text-align: center;
+}
+
+.edit-upload-placeholder svg {
+  color: var(--accents-3);
+}
+
+.edit-upload-placeholder span {
+  font-size: 11px;
+}
+
+/* 图片预览网格 */
+.edit-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px;
+  width: 100%;
+}
+
+.edit-preview-item {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.edit-preview-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.edit-preview-remove {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  transition: background 0.2s;
+  padding: 0;
+}
+
+.edit-preview-remove:hover {
+  background: rgba(0, 0, 0, 0.85);
+}
+
+.edit-preview-add {
+  width: 72px;
+  height: 72px;
+  border-radius: 10px;
+  border: 2px dashed var(--border);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accents-4);
+  font-size: 20px;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.edit-preview-add:hover {
+  border-color: #000;
+  color: #000;
+}
+
+/* 编辑模式下 settings-grid 布局 */
+.settings-grid.edit-mode {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto;
+}
+
+.settings-grid.edit-mode .settings-block-prompt {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.settings-grid.edit-mode .settings-block-upload {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.settings-grid.edit-mode .settings-block-row2 {
+  grid-column: 1 / -1;
+  grid-row: auto;
+}
+
+@media (max-width: 768px) {
+  .edit-preview-item,
+  .edit-preview-add {
+    width: 60px;
+    height: 60px;
+  }
+
+  .settings-grid.edit-mode {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-grid.edit-mode .settings-block-upload {
+    grid-column: 1;
+    grid-row: auto;
   }
 }

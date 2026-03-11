@@ -494,7 +494,17 @@
     "noImagesDownloaded": "没有成功获取任何图片",
     "generatingZip": "生成压缩包...",
     "packSuccess": "成功打包 {count} 张图片",
-    "packFailed": "打包失败，请重试"
+    "packFailed": "打包失败，请重试",
+    "modeGenerate": "生成",
+    "modeEdit": "编辑",
+    "editImages": "编辑图片",
+    "editUploadHint": "点击或拖拽图片到此处（最多 3 张）",
+    "editStart": "开始",
+    "editNoImages": "请先上传至少一张图片",
+    "editMaxFiles": "最多上传 {max} 张图片",
+    "editInvalidType": "不支持的图片格式",
+    "editFileTooLarge": "图片过大，单张最大 50MB",
+    "editComplete": "图片编辑完成"
   },
   "video": {
     "pageTitle": "Grok2API - Video 视频生成",

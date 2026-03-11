@@ -494,7 +494,17 @@
     "noImagesDownloaded": "No images were downloaded successfully",
     "generatingZip": "Generating ZIP...",
     "packSuccess": "Successfully packed {count} images",
-    "packFailed": "Packing failed, please try again"
+    "packFailed": "Packing failed, please try again",
+    "modeGenerate": "Generate",
+    "modeEdit": "Edit",
+    "editImages": "Edit Images",
+    "editUploadHint": "Click or drag images here (max 3)",
+    "editStart": "Start",
+    "editNoImages": "Please upload at least one image",
+    "editMaxFiles": "Maximum {max} images allowed",
+    "editInvalidType": "Unsupported image format",
+    "editFileTooLarge": "Image too large (max 50MB)",
+    "editComplete": "Image edit completed"
   },
   "video": {
     "pageTitle": "Grok2API - Video Generation",
