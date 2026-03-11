@@ -88,10 +88,14 @@ async def admin_verify():
 
 
 @router.get("/config", dependencies=[Depends(verify_app_key)])
-async def get_config():
-    """获取当前配置"""
-    # 暴露原始配置字典
-    return config._config
+async def get_config(key: str = None):
+    """获取当前配置，支持通过 key 参数获取特定值（格式: section 或 section.key）"""
+    if key is None:
+        return config._config
+    value = config.get(key)
+    if value is None:
+        raise HTTPException(status_code=404, detail=f"配置项 '{key}' 不存在")
+    return {"key": key, "value": value}
 
 
 @router.post("/config", dependencies=[Depends(verify_app_key)])

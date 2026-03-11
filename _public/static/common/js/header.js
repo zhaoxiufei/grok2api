@@ -28,6 +28,23 @@ async function loadAdminHeader() {
     if (typeof updateStorageModeButton === 'function') {
       updateStorageModeButton();
     }
+    // 根据 function_enabled 配置决定是否显示工作空间按钮
+    if (typeof ensureAdminKey === 'function') {
+      ensureAdminKey().then(function (apiKey) {
+        if (!apiKey) return;
+        fetch('/v1/admin/config?key=app.function_enabled', {
+          headers: buildAuthHeaders(apiKey)
+        })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (data) {
+            if (data && data.value) {
+              var link = document.getElementById('workspace-link');
+              if (link) link.style.display = '';
+            }
+          })
+          .catch(function () {});
+      });
+    }
   } catch (e) {
     // Fail silently to avoid breaking page load
   }
