@@ -291,6 +291,7 @@
     }
 
     if (isEditing) return;
+    clearImages();
     isEditing = true;
     editSessionCounter += 1;
     const sessionId = editSessionCounter;
@@ -921,6 +922,7 @@
       return;
     }
 
+    clearImages();
     isRunning = true;
     setStatus('connecting', t('common.connecting'));
     startBtn.disabled = true;
