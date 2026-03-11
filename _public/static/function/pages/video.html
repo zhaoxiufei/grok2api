@@ -25,22 +25,6 @@
           <h2 class="text-2xl font-semibold tracking-tight" data-i18n="video.title">Video 视频生成</h2>
           <p class="text-[var(--accents-4)] mt-1 text-sm" data-i18n="video.subtitle">生成短视频，支持参考图与多种预设风格。</p>
         </div>
-        <div class="video-actions">
-          <button id="startBtn" class="geist-button gap-2">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <span data-i18n="video.startGenerate">开始生成</span>
-          </button>
-          <button id="stopBtn" class="geist-button-outline gap-2 hidden">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              stroke-linecap="round" stroke-linejoin="round">
-              <rect x="5" y="5" width="14" height="14" />
-            </svg>
-            <span data-i18n="common.stop">停止</span>
-          </button>
-        </div>
       </div>
 
       <div class="h-px bg-[var(--border)]"></div>
@@ -139,18 +123,55 @@
         </div>
       </div>
 
-      <div class="video-card video-preview-card">
-        <div class="video-preview-header">
-          <div class="card-title" data-i18n="video.videoPreview">视频预览</div>
-          <div class="preview-actions">
-            <button id="clearBtn" class="geist-button-outline text-xs px-3" data-i18n="video.clearPreview">清空</button>
-          </div>
+      <div class="video-card" style="overflow: hidden;">
+        <div class="waterfall-header">
+          <div class="card-title" data-i18n="video.gallery">视频瀑布流</div>
+          <div class="waterfall-actions"></div>
         </div>
-        <div id="videoEmpty" class="video-empty" data-i18n="video.waitingGenerate">等待生成视频</div>
-        <div id="videoStage" class="video-stage hidden"></div>
+        <div id="videoEmpty" class="video-empty">
+          <div class="empty-title" data-i18n="video.waitingTitle">等待生成中</div>
+          <div class="empty-subtitle" data-i18n="video.waitingSubtitle">启动任务后，生成的视频会自动显示在这里</div>
+        </div>
+        <div id="videoWaterfall" class="video-waterfall"></div>
       </div>
     </div>
   </main>
+
+  <!-- 视频灯箱 -->
+  <div id="videoLightbox" class="video-lightbox">
+    <button class="lightbox-close" id="closeVideoLightbox">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="videoLightboxPrev">&lsaquo;</button>
+    <button class="lightbox-nav lightbox-next" id="videoLightboxNext">&rsaquo;</button>
+    <video id="videoLightboxPlayer" controls preload="metadata"></video>
+  </div>
+
+  <!-- 浮动工具栏 -->
+  <div id="floatingActions" class="floating-actions">
+    <button id="startBtn" class="geist-button gap-2">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <polygon points="5 3 19 12 5 21 5 3" />
+      </svg>
+      <span data-i18n="video.startGenerate">开始生成</span>
+    </button>
+    <button id="stopBtn" class="geist-button-outline gap-2 hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="5" y="5" width="14" height="14" />
+      </svg>
+      <span data-i18n="common.stop">停止</span>
+    </button>
+    <span class="toolbar-sep"></span>
+    <button id="clearBtn" class="geist-button-outline text-xs px-3" data-i18n="video.clearPreview">清空</button>
+    <span class="toolbar-sep"></span>
+    <button id="batchDownloadBtn" class="geist-button-outline text-xs px-3" data-i18n="video.batch">批量</button>
+    <div id="selectionToolbar" class="selection-toolbar hidden">
+      <span class="toolbar-sep"></span>
+      <button id="toggleSelectAllBtn" class="geist-button-outline text-xs px-3" data-i18n="video.selectAll">全选</button>
+      <button id="downloadSelectedBtn" class="geist-button-outline text-xs px-3" data-i18n="imagine.download">下载</button>
+      <span id="selectedCountBadge" class="selected-count">0</span>
+    </div>
+  </div>
 
   <div id="app-footer"></div>
 
@@ -159,6 +180,7 @@
   <script src="/static/common/js/function-header.js?v=1.6.1"></script>
   <script src="/static/common/js/footer.js?v=1.6.1"></script>
   <script src="/static/common/js/toast.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script src="/static/function/js/video.js?v=1.6.1"></script>
 </body>
 

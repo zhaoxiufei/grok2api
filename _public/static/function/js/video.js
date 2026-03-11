@@ -22,7 +22,18 @@
   const resolutionValue = document.getElementById('resolutionValue');
   const presetValue = document.getElementById('presetValue');
   const videoEmpty = document.getElementById('videoEmpty');
-  const videoStage = document.getElementById('videoStage');
+  const videoWaterfall = document.getElementById('videoWaterfall');
+  const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+  const selectionToolbar = document.getElementById('selectionToolbar');
+  const toggleSelectAllBtn = document.getElementById('toggleSelectAllBtn');
+  const downloadSelectedBtn = document.getElementById('downloadSelectedBtn');
+  const selectedCountBadge = document.getElementById('selectedCountBadge');
+  const videoLightbox = document.getElementById('videoLightbox');
+  const videoLightboxPlayer = document.getElementById('videoLightboxPlayer');
+  const closeVideoLightbox = document.getElementById('closeVideoLightbox');
+  const videoLightboxPrev = document.getElementById('videoLightboxPrev');
+  const videoLightboxNext = document.getElementById('videoLightboxNext');
+  const floatingActions = document.getElementById('floatingActions');
 
   let currentSource = null;
   let currentTaskId = '';
@@ -34,8 +45,11 @@
   let fileDataUrl = '';
   let elapsedTimer = null;
   let lastProgress = 0;
-  let currentPreviewItem = null;
-  let previewCount = 0;
+  let currentWaterfallItem = null;
+  let videoSequence = 0;
+  let isSelectionMode = false;
+  let selectedVideos = new Set();
+  let currentLightboxIndex = -1;
   const DEFAULT_REASONING_EFFORT = 'low';
 
   function toast(message, type) {
@@ -91,114 +105,138 @@
     }
   }
 
+  function updateItemProgress(item, value) {
+    if (!item) return;
+    const fill = item.querySelector('.video-progress-fill');
+    if (fill) {
+      fill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+    }
+  }
+
   function resetOutput(keepPreview) {
     progressBuffer = '';
     contentBuffer = '';
     collectingContent = false;
     lastProgress = 0;
-    currentPreviewItem = null;
+    currentWaterfallItem = null;
     updateProgress(0);
     setIndeterminate(false);
     if (!keepPreview) {
-      if (videoStage) {
-        videoStage.innerHTML = '';
-        videoStage.classList.add('hidden');
+      if (videoWaterfall) {
+        videoWaterfall.innerHTML = '';
       }
       if (videoEmpty) {
-        videoEmpty.classList.remove('hidden');
+        videoEmpty.style.display = '';
       }
-      previewCount = 0;
+      videoSequence = 0;
+      exitSelectionMode();
     }
     if (durationValue) {
       durationValue.textContent = t('video.elapsedTimeNone');
     }
   }
 
-  function initPreviewSlot() {
-    if (!videoStage) return;
-    previewCount += 1;
-    currentPreviewItem = document.createElement('div');
-    currentPreviewItem.className = 'video-item';
-    currentPreviewItem.dataset.index = String(previewCount);
-    currentPreviewItem.classList.add('is-pending');
+  function initWaterfallSlot() {
+    if (!videoWaterfall) return;
+    videoSequence += 1;
 
-    const header = document.createElement('div');
-    header.className = 'video-item-bar';
+    const item = document.createElement('div');
+    item.className = 'video-waterfall-item';
+    item.dataset.index = String(videoSequence);
+    item.dataset.url = '';
 
-    const title = document.createElement('div');
-    title.className = 'video-item-title';
-    title.textContent = t('video.videoTitle', { n: previewCount });
+    // 选择框
+    const checkbox = document.createElement('div');
+    checkbox.className = 'video-checkbox';
+    item.appendChild(checkbox);
 
-    const actions = document.createElement('div');
-    actions.className = 'video-item-actions';
+    // 进度条覆盖层
+    const progressOverlay = document.createElement('div');
+    progressOverlay.className = 'video-progress-overlay';
+    const progressFillEl = document.createElement('div');
+    progressFillEl.className = 'video-progress-fill';
+    progressOverlay.appendChild(progressFillEl);
+    item.appendChild(progressOverlay);
 
-    const openBtn = document.createElement('a');
-    openBtn.className = 'geist-button-outline text-xs px-3 video-open hidden';
-    openBtn.target = '_blank';
-    openBtn.rel = 'noopener';
-    openBtn.textContent = t('video.open');
+    // 占位区
+    const placeholder = document.createElement('div');
+    placeholder.className = 'video-placeholder';
+    placeholder.textContent = t('video.generatingPlaceholder');
+    item.appendChild(placeholder);
 
-    const downloadBtn = document.createElement('button');
-    downloadBtn.className = 'geist-button-outline text-xs px-3 video-download';
-    downloadBtn.type = 'button';
-    downloadBtn.textContent = t('imagine.download');
-    downloadBtn.disabled = true;
+    // 底部元数据
+    const meta = document.createElement('div');
+    meta.className = 'waterfall-meta';
 
-    actions.appendChild(openBtn);
-    actions.appendChild(downloadBtn);
-    header.appendChild(title);
-    header.appendChild(actions);
+    const indexSpan = document.createElement('div');
+    indexSpan.textContent = `#${videoSequence}`;
 
-    const body = document.createElement('div');
-    body.className = 'video-item-body';
-    body.innerHTML = '<div class="video-item-placeholder">' + t('video.generatingPlaceholder') + '</div>';
+    const metaRight = document.createElement('div');
+    metaRight.className = 'meta-right';
 
-    const link = document.createElement('div');
-    link.className = 'video-item-link';
+    const statusBadge = document.createElement('span');
+    statusBadge.className = 'image-status running';
+    statusBadge.textContent = t('common.generating');
 
-    currentPreviewItem.appendChild(header);
-    currentPreviewItem.appendChild(body);
-    currentPreviewItem.appendChild(link);
-    videoStage.appendChild(currentPreviewItem);
-    videoStage.classList.remove('hidden');
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'waterfall-time';
+    timeSpan.textContent = '';
+
+    metaRight.appendChild(statusBadge);
+    metaRight.appendChild(timeSpan);
+    meta.appendChild(indexSpan);
+    meta.appendChild(metaRight);
+    item.appendChild(meta);
+
+    // 记录开始时间
+    item.dataset.startTime = String(Date.now());
+
+    videoWaterfall.prepend(item);
+    currentWaterfallItem = item;
+
     if (videoEmpty) {
-      videoEmpty.classList.add('hidden');
+      videoEmpty.style.display = 'none';
+    }
+
+    // 选择模式同步
+    if (isSelectionMode) {
+      item.classList.add('selection-mode');
     }
   }
 
-  function ensurePreviewSlot() {
-    if (!currentPreviewItem) {
-      initPreviewSlot();
+  function ensureWaterfallSlot() {
+    if (!currentWaterfallItem) {
+      initWaterfallSlot();
     }
-    return currentPreviewItem;
+    return currentWaterfallItem;
   }
 
-  function updateItemLinks(item, url) {
+  function updateWaterfallItemDone(item, url) {
     if (!item) return;
-    const openBtn = item.querySelector('.video-open');
-    const downloadBtn = item.querySelector('.video-download');
-    const link = item.querySelector('.video-item-link');
-    const safeUrl = url || '';
-    item.dataset.url = safeUrl;
-    if (link) {
-      link.textContent = safeUrl;
-      link.classList.toggle('has-url', Boolean(safeUrl));
+    item.dataset.url = url || '';
+
+    // 状态徽章
+    const badge = item.querySelector('.image-status');
+    if (badge) {
+      badge.classList.remove('running');
+      badge.classList.add('done');
+      badge.textContent = t('common.done');
     }
-    if (openBtn) {
-      if (safeUrl) {
-        openBtn.href = safeUrl;
-        openBtn.classList.remove('hidden');
-      } else {
-        openBtn.classList.add('hidden');
-        openBtn.removeAttribute('href');
+
+    // 移除进度条覆盖层
+    const overlay = item.querySelector('.video-progress-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
+
+    // 更新耗时
+    const startTime = parseInt(item.dataset.startTime, 10);
+    if (startTime) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const timeSpan = item.querySelector('.waterfall-time');
+      if (timeSpan) {
+        timeSpan.textContent = `${elapsed}s`;
       }
-    }
-    if (downloadBtn) {
-      downloadBtn.dataset.url = safeUrl;
-      downloadBtn.disabled = !safeUrl;
-    }
-    if (safeUrl) {
-      item.classList.remove('is-pending');
     }
   }
 
@@ -330,34 +368,48 @@
   }
 
   function renderVideoFromHtml(html) {
-    const container = ensurePreviewSlot();
+    const container = ensureWaterfallSlot();
     if (!container) return;
-    const body = container.querySelector('.video-item-body');
-    if (!body) return;
-    body.innerHTML = html;
-    const videoEl = body.querySelector('video');
-    let videoUrl = '';
-    if (videoEl) {
+    const placeholder = container.querySelector('.video-placeholder');
+    if (placeholder) {
+      // 解析 HTML 提取视频地址
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      const srcVideo = tmp.querySelector('video');
+      let videoUrl = '';
+      if (srcVideo) {
+        const source = srcVideo.querySelector('source');
+        if (source && source.getAttribute('src')) {
+          videoUrl = source.getAttribute('src');
+        } else if (srcVideo.getAttribute('src')) {
+          videoUrl = srcVideo.getAttribute('src');
+        }
+      }
+
+      const videoEl = document.createElement('video');
       videoEl.controls = true;
       videoEl.preload = 'metadata';
-      const source = videoEl.querySelector('source');
-      if (source && source.getAttribute('src')) {
-        videoUrl = source.getAttribute('src');
-      } else if (videoEl.getAttribute('src')) {
-        videoUrl = videoEl.getAttribute('src');
+      if (videoUrl) {
+        videoEl.src = videoUrl;
       }
+      placeholder.replaceWith(videoEl);
+      updateWaterfallItemDone(container, videoUrl);
     }
-    updateItemLinks(container, videoUrl);
   }
 
   function renderVideoFromUrl(url) {
-    const container = ensurePreviewSlot();
+    const container = ensureWaterfallSlot();
     if (!container) return;
     const safeUrl = url || '';
-    const body = container.querySelector('.video-item-body');
-    if (!body) return;
-    body.innerHTML = `\n      <video controls preload="metadata">\n        <source src="${safeUrl}" type="video/mp4">\n      </video>\n    `;
-    updateItemLinks(container, safeUrl);
+    const placeholder = container.querySelector('.video-placeholder');
+    if (placeholder) {
+      const videoEl = document.createElement('video');
+      videoEl.controls = true;
+      videoEl.preload = 'metadata';
+      videoEl.src = safeUrl;
+      placeholder.replaceWith(videoEl);
+      updateWaterfallItemDone(container, safeUrl);
+    }
   }
 
   function handleDelta(text) {
@@ -403,6 +455,7 @@
       const value = parseFloat(last[3]);
       setIndeterminate(false);
       updateProgress(value);
+      updateItemProgress(currentWaterfallItem, value);
       if (progressText && Number.isFinite(round) && Number.isFinite(total) && total > 0) {
         progressText.textContent = `${Math.round(value)}% · ${round}/${total}`;
       }
@@ -416,6 +469,7 @@
       const value = parseFloat(last[1]);
       setIndeterminate(false);
       updateProgress(value);
+      updateItemProgress(currentWaterfallItem, value);
       progressBuffer = progressBuffer.slice(Math.max(0, progressBuffer.length - 240));
       return;
     }
@@ -426,6 +480,7 @@
       const value = parseInt(last[1], 10);
       setIndeterminate(false);
       updateProgress(value);
+      updateItemProgress(currentWaterfallItem, value);
       progressBuffer = progressBuffer.slice(Math.max(0, progressBuffer.length - 200));
     }
   }
@@ -464,7 +519,7 @@
     startBtn.disabled = true;
     updateMeta();
     resetOutput(true);
-    initPreviewSlot();
+    initWaterfallSlot();
     setStatus('connecting', t('common.connecting'));
 
     let taskId = '';
@@ -552,12 +607,282 @@
       setStatus('connected', t('common.done'));
       setIndeterminate(false);
       updateProgress(100);
+      updateItemProgress(currentWaterfallItem, 100);
+    } else {
+      // 错误时标记当前卡片
+      if (currentWaterfallItem) {
+        const badge = currentWaterfallItem.querySelector('.image-status');
+        if (badge) {
+          badge.classList.remove('running');
+          badge.classList.add('error');
+          badge.textContent = t('common.failed');
+        }
+        const overlay = currentWaterfallItem.querySelector('.video-progress-overlay');
+        if (overlay) {
+          overlay.remove();
+        }
+      }
     }
     if (durationValue && startAt) {
       const seconds = Math.max(0, Math.round((Date.now() - startAt) / 1000));
       durationValue.textContent = t('video.elapsedTime', { sec: seconds });
     }
   }
+
+  // ============ 灯箱功能 ============
+
+  function getAllVideoItems() {
+    if (!videoWaterfall) return [];
+    return Array.from(videoWaterfall.querySelectorAll('.video-waterfall-item'));
+  }
+
+  function getCompletedVideoItems() {
+    return getAllVideoItems().filter(item => item.dataset.url);
+  }
+
+  function openVideoLightbox(index) {
+    const items = getCompletedVideoItems();
+    if (index < 0 || index >= items.length) return;
+    currentLightboxIndex = index;
+    const url = items[index].dataset.url;
+    if (!url) return;
+    if (videoLightboxPlayer) {
+      videoLightboxPlayer.src = url;
+    }
+    if (videoLightbox) {
+      videoLightbox.classList.add('active');
+    }
+    updateLightboxNav();
+  }
+
+  function closeVideoLightboxFn() {
+    if (videoLightboxPlayer) {
+      videoLightboxPlayer.pause();
+      videoLightboxPlayer.removeAttribute('src');
+      videoLightboxPlayer.load();
+    }
+    if (videoLightbox) {
+      videoLightbox.classList.remove('active');
+    }
+    currentLightboxIndex = -1;
+  }
+
+  function showPrevVideo() {
+    if (currentLightboxIndex > 0) {
+      openVideoLightbox(currentLightboxIndex - 1);
+    }
+  }
+
+  function showNextVideo() {
+    const items = getCompletedVideoItems();
+    if (currentLightboxIndex < items.length - 1) {
+      openVideoLightbox(currentLightboxIndex + 1);
+    }
+  }
+
+  function updateLightboxNav() {
+    const items = getCompletedVideoItems();
+    if (videoLightboxPrev) {
+      videoLightboxPrev.disabled = currentLightboxIndex <= 0;
+    }
+    if (videoLightboxNext) {
+      videoLightboxNext.disabled = currentLightboxIndex >= items.length - 1;
+    }
+  }
+
+  if (closeVideoLightbox) {
+    closeVideoLightbox.addEventListener('click', closeVideoLightboxFn);
+  }
+  if (videoLightboxPrev) {
+    videoLightboxPrev.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showPrevVideo();
+    });
+  }
+  if (videoLightboxNext) {
+    videoLightboxNext.addEventListener('click', (e) => {
+      e.stopPropagation();
+      showNextVideo();
+    });
+  }
+  if (videoLightbox) {
+    videoLightbox.addEventListener('click', (e) => {
+      if (e.target === videoLightbox) {
+        closeVideoLightboxFn();
+      }
+    });
+  }
+  if (videoLightboxPlayer) {
+    videoLightboxPlayer.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+  }
+
+  // 键盘支持
+  document.addEventListener('keydown', (e) => {
+    if (!videoLightbox || !videoLightbox.classList.contains('active')) return;
+    if (e.key === 'Escape') {
+      closeVideoLightboxFn();
+    } else if (e.key === 'ArrowLeft') {
+      showPrevVideo();
+    } else if (e.key === 'ArrowRight') {
+      showNextVideo();
+    }
+  });
+
+  // ============ 批量选择功能 ============
+
+  function enterSelectionMode() {
+    isSelectionMode = true;
+    selectedVideos.clear();
+    getAllVideoItems().forEach(item => {
+      item.classList.add('selection-mode');
+      item.classList.remove('selected');
+    });
+    if (selectionToolbar) {
+      selectionToolbar.classList.remove('hidden');
+    }
+    updateSelectedVideoCount();
+  }
+
+  function exitSelectionMode() {
+    isSelectionMode = false;
+    selectedVideos.clear();
+    getAllVideoItems().forEach(item => {
+      item.classList.remove('selection-mode', 'selected');
+    });
+    if (selectionToolbar) {
+      selectionToolbar.classList.add('hidden');
+    }
+    updateSelectedVideoCount();
+  }
+
+  function toggleSelectionMode() {
+    if (isSelectionMode) {
+      exitSelectionMode();
+    } else {
+      enterSelectionMode();
+    }
+  }
+
+  function toggleVideoSelection(item) {
+    if (!item || !item.dataset.url) return;
+    const index = item.dataset.index;
+    if (selectedVideos.has(index)) {
+      selectedVideos.delete(index);
+      item.classList.remove('selected');
+    } else {
+      selectedVideos.add(index);
+      item.classList.add('selected');
+    }
+    updateSelectedVideoCount();
+  }
+
+  function updateSelectedVideoCount() {
+    if (selectedCountBadge) {
+      selectedCountBadge.textContent = String(selectedVideos.size);
+    }
+    // 更新全选按钮文本
+    const completed = getCompletedVideoItems();
+    if (toggleSelectAllBtn) {
+      if (completed.length > 0 && selectedVideos.size >= completed.length) {
+        toggleSelectAllBtn.textContent = t('video.deselectAll');
+      } else {
+        toggleSelectAllBtn.textContent = t('video.selectAll');
+      }
+    }
+  }
+
+  function toggleSelectAll() {
+    const completed = getCompletedVideoItems();
+    if (completed.length > 0 && selectedVideos.size >= completed.length) {
+      // 取消全选
+      selectedVideos.clear();
+      completed.forEach(item => item.classList.remove('selected'));
+    } else {
+      // 全选
+      completed.forEach(item => {
+        const index = item.dataset.index;
+        if (index) {
+          selectedVideos.add(index);
+          item.classList.add('selected');
+        }
+      });
+    }
+    updateSelectedVideoCount();
+  }
+
+  // ============ 批量下载 ============
+
+  async function downloadSelectedVideos() {
+    if (selectedVideos.size === 0) {
+      toast(t('video.noVideosSelected'), 'error');
+      return;
+    }
+    if (typeof JSZip === 'undefined') {
+      toast(t('video.jszipFailed'), 'error');
+      return;
+    }
+
+    const items = getCompletedVideoItems().filter(item => selectedVideos.has(item.dataset.index));
+    if (items.length === 0) {
+      toast(t('video.noVideosSelected'), 'error');
+      return;
+    }
+
+    toast(t('video.packing', { count: items.length }), 'info');
+
+    const zip = new JSZip();
+    const folder = zip.folder('videos');
+    let done = 0;
+    const total = items.length;
+    let successCount = 0;
+
+    for (const item of items) {
+      const url = item.dataset.url;
+      const index = item.dataset.index || '0';
+      try {
+        const response = await fetch(url, { mode: 'cors' });
+        if (response.ok) {
+          const blob = await response.blob();
+          folder.file(`grok_video_${index}.mp4`, blob);
+          successCount++;
+        }
+      } catch (e) {
+        // 跳过失败
+      }
+      done++;
+      if (done < total) {
+        toast(t('video.packingProgress', { done, total }), 'info');
+      }
+    }
+
+    if (successCount === 0) {
+      toast(t('video.noVideosDownloaded'), 'error');
+      return;
+    }
+
+    toast(t('video.generatingZip'), 'info');
+
+    try {
+      const content = await zip.generateAsync({ type: 'blob' });
+      const now = new Date();
+      const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      const blobUrl = URL.createObjectURL(content);
+      const anchor = document.createElement('a');
+      anchor.href = blobUrl;
+      anchor.download = `video_${dateStr}_${Date.now()}.zip`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(blobUrl);
+      toast(t('video.packSuccess', { count: successCount }), 'success');
+    } catch (e) {
+      toast(t('video.packFailed'), 'error');
+    }
+  }
+
+  // ============ 事件绑定 ============
 
   if (startBtn) {
     startBtn.addEventListener('click', () => startConnection());
@@ -571,36 +896,94 @@
     clearBtn.addEventListener('click', () => resetOutput());
   }
 
-  if (videoStage) {
-    videoStage.addEventListener('click', async (event) => {
+  if (batchDownloadBtn) {
+    batchDownloadBtn.addEventListener('click', toggleSelectionMode);
+  }
+
+  if (toggleSelectAllBtn) {
+    toggleSelectAllBtn.addEventListener('click', toggleSelectAll);
+  }
+
+  if (downloadSelectedBtn) {
+    downloadSelectedBtn.addEventListener('click', downloadSelectedVideos);
+  }
+
+  // 瀑布流点击事件委托
+  if (videoWaterfall) {
+    videoWaterfall.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof HTMLElement)) return;
-      if (!target.classList.contains('video-download')) return;
-      event.preventDefault();
-      const item = target.closest('.video-item');
+
+      const item = target.closest('.video-waterfall-item');
       if (!item) return;
-      const url = item.dataset.url || target.dataset.url || '';
-      const index = item.dataset.index || '';
-      if (!url) return;
-      try {
-        const response = await fetch(url, { mode: 'cors' });
-        if (!response.ok) {
-          throw new Error('download_failed');
+
+      // 点击 video 控件不触发
+      if (target.tagName === 'VIDEO') return;
+
+      if (isSelectionMode) {
+        toggleVideoSelection(item);
+        return;
+      }
+
+      // 正常模式：点击已完成卡片打开灯箱
+      if (item.dataset.url) {
+        const completed = getCompletedVideoItems();
+        const idx = completed.indexOf(item);
+        if (idx >= 0) {
+          openVideoLightbox(idx);
         }
-        const blob = await response.blob();
-        const blobUrl = URL.createObjectURL(blob);
-        const anchor = document.createElement('a');
-        anchor.href = blobUrl;
-        anchor.download = index ? `grok_video_${index}.mp4` : 'grok_video.mp4';
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
-        URL.revokeObjectURL(blobUrl);
-      } catch (e) {
-        toast(t('video.downloadFailed'), 'error');
       }
     });
   }
+
+  // ============ 浮动工具栏拖拽 ============
+
+  if (floatingActions) {
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let barStartX = 0;
+    let barStartY = 0;
+    let hasMoved = false;
+
+    floatingActions.addEventListener('pointerdown', (e) => {
+      // 不拦截按钮上的点击
+      if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
+      isDragging = true;
+      hasMoved = false;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const rect = floatingActions.getBoundingClientRect();
+      barStartX = rect.left + rect.width / 2;
+      barStartY = rect.top;
+      floatingActions.setPointerCapture(e.pointerId);
+      floatingActions.classList.add('shadow-xl');
+    });
+
+    floatingActions.addEventListener('pointermove', (e) => {
+      if (!isDragging) return;
+      const dx = e.clientX - dragStartX;
+      const dy = e.clientY - dragStartY;
+      if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+        hasMoved = true;
+      }
+      const newX = barStartX + dx;
+      const newY = barStartY + dy;
+      floatingActions.style.left = `${newX}px`;
+      floatingActions.style.top = `${newY}px`;
+      floatingActions.style.bottom = 'auto';
+      floatingActions.style.transform = 'translateX(-50%)';
+    });
+
+    floatingActions.addEventListener('pointerup', (e) => {
+      if (!isDragging) return;
+      isDragging = false;
+      floatingActions.releasePointerCapture(e.pointerId);
+      floatingActions.classList.remove('shadow-xl');
+    });
+  }
+
+  // ============ 文件与快捷键 ============
 
   if (imageFileInput) {
     imageFileInput.addEventListener('change', () => {

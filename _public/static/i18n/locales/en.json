@@ -557,7 +557,22 @@
     "downloadFailed": "Download failed, please check if the video link is accessible",
     "sec6": "6s",
     "sec10": "10s",
-    "sec15": "15s"
+    "sec15": "15s",
+    "gallery": "Video Gallery",
+    "waitingTitle": "Waiting to generate",
+    "waitingSubtitle": "Videos will appear here automatically after starting a task",
+    "batch": "Batch",
+    "batchDownloadTitle": "Batch download",
+    "selectAll": "Select all",
+    "deselectAll": "Deselect all",
+    "noVideosSelected": "Please select videos to download first",
+    "jszipFailed": "JSZip library failed to load, please refresh and try again",
+    "packing": "Packing {count} videos...",
+    "packingProgress": "Packing... ({done}/{total})",
+    "noVideosDownloaded": "No videos were downloaded successfully",
+    "generatingZip": "Generating ZIP...",
+    "packSuccess": "Successfully packed {count} videos",
+    "packFailed": "Packing failed, please try again"
   },
   "voice": {
     "pageTitle": "Grok2API - LiveKit Voice",

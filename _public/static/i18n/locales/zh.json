@@ -557,7 +557,22 @@
     "downloadFailed": "下载失败，请检查视频链接是否可访问",
     "sec6": "6 秒",
     "sec10": "10 秒",
-    "sec15": "15 秒"
+    "sec15": "15 秒",
+    "gallery": "视频瀑布流",
+    "waitingTitle": "等待生成中",
+    "waitingSubtitle": "启动任务后，生成的视频会自动显示在这里",
+    "batch": "批量",
+    "batchDownloadTitle": "批量下载",
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "noVideosSelected": "请先选择要下载的视频",
+    "jszipFailed": "JSZip 库加载失败，请刷新重试",
+    "packing": "正在打包 {count} 个视频...",
+    "packingProgress": "打包中... ({done}/{total})",
+    "noVideosDownloaded": "没有成功获取任何视频",
+    "generatingZip": "生成压缩包...",
+    "packSuccess": "成功打包 {count} 个视频",
+    "packFailed": "打包失败，请重试"
   },
   "voice": {
     "pageTitle": "Grok2API - LiveKit 陪聊",
