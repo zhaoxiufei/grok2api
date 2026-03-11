@@ -1831,6 +1831,6 @@
       window.location.href = '/login';
       return;
     }
-    loadSessions();
+    I18n.onReady(() => loadSessions());
   })();
 })();
