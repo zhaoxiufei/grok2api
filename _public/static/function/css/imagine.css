@@ -186,9 +186,25 @@
   grid-row: 2;
 }
 
+.settings-block-row2b {
+  grid-column: 2;
+  grid-row: 2;
+}
+
 .settings-block-row3 {
   grid-column: 1;
   grid-row: 3;
+}
+
+.settings-block-row3b {
+  grid-column: 2;
+  grid-row: 3;
+}
+
+.settings-block-single {
+  height: 100%;
+  align-self: stretch;
+  justify-content: stretch;
 }
 
 .settings-prompt {
@@ -295,7 +311,9 @@
   .settings-block-prompt,
   .settings-block-duo,
   .settings-block-row2,
-  .settings-block-row3 {
+  .settings-block-row2b,
+  .settings-block-row3,
+  .settings-block-row3b {
     grid-column: 1;
     grid-row: auto;
   }

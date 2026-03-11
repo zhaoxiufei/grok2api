@@ -461,6 +461,7 @@
     "autoFilter": "Auto Filter",
     "autoFilterDesc": "Filter substandard images",
     "nsfwLabel": "NSFW",
+    "nsfwDesc": "Enable NSFW mode",
     "nsfwOn": "On",
     "nsfwOff": "Off",
     "saveLocation": "Save Location",
@@ -505,7 +506,14 @@
     "editMaxFiles": "Maximum {max} images allowed",
     "editInvalidType": "Unsupported image format",
     "editFileTooLarge": "Image too large (max 50MB)",
-    "editComplete": "Image edit completed"
+    "editComplete": "Image edit completed",
+    "genCount": "Generation Count",
+    "genCount10": "10 images",
+    "genCount20": "20 images",
+    "genCount30": "30 images",
+    "genCount40": "40 images",
+    "genCount50": "50 images",
+    "genCountReached": "Reached target generation count ({count} images)"
   },
   "video": {
     "pageTitle": "Grok2API - Video Generation",

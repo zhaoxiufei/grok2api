@@ -461,6 +461,7 @@
     "autoFilter": "自动过滤",
     "autoFilterDesc": "过滤不达标图片",
     "nsfwLabel": "是否 NSFW",
+    "nsfwDesc": "启用 NSFW 模式",
     "nsfwOn": "开启",
     "nsfwOff": "关闭",
     "saveLocation": "保存位置",
@@ -505,7 +506,14 @@
     "editMaxFiles": "最多上传 {max} 张图片",
     "editInvalidType": "不支持的图片格式",
     "editFileTooLarge": "图片过大，单张最大 50MB",
-    "editComplete": "图片编辑完成"
+    "editComplete": "图片编辑完成",
+    "genCount": "生成数量",
+    "genCount10": "10 张",
+    "genCount20": "20 张",
+    "genCount30": "30 张",
+    "genCount40": "40 张",
+    "genCount50": "50 张",
+    "genCountReached": "已达到目标生成数量 ({count} 张)"
   },
   "video": {
     "pageTitle": "Grok2API - Video 视频生成",

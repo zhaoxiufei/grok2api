@@ -7,7 +7,7 @@
   const concurrentSelect = document.getElementById('concurrentSelect');
   const autoDownloadToggle = document.getElementById('autoDownloadToggle');
   const autoFilterToggle = document.getElementById('autoFilterToggle');
-  const nsfwSelect = document.getElementById('nsfwSelect');
+  const nsfwToggle = document.getElementById('nsfwToggle');
   const selectFolderBtn = document.getElementById('selectFolderBtn');
   const folderPath = document.getElementById('folderPath');
   const statusText = document.getElementById('statusText');
@@ -124,9 +124,9 @@
       if (Number.isFinite(value) && value >= 0) {
         finalMinBytesDefault = value;
       }
-      if (nsfwSelect && typeof data.nsfw === 'boolean') {
-        nsfwSelect.value = data.nsfw ? 'true' : 'false';
-      }
+      // if (nsfwToggle && typeof data.nsfw === 'boolean') {
+      //   nsfwToggle.checked = data.nsfw;
+      // }
     } catch (e) {
       // ignore
     }
@@ -914,8 +914,8 @@
 
     const concurrent = concurrentSelect ? parseInt(concurrentSelect.value, 10) : 1;
     const ratio = ratioSelect ? ratioSelect.value : '2:3';
-    const nsfwEnabled = nsfwSelect ? nsfwSelect.value === 'true' : true;
-    
+    const nsfwEnabled = nsfwToggle ? nsfwToggle.checked : false;
+
     if (isRunning) {
       toast(t('common.alreadyRunning'), 'warning');
       return;
@@ -1030,7 +1030,7 @@
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const prompt = promptOverride || (promptInput ? promptInput.value.trim() : '');
     const ratio = ratioSelect ? ratioSelect.value : '2:3';
-    const nsfwEnabled = nsfwSelect ? nsfwSelect.value === 'true' : true;
+    const nsfwEnabled = nsfwToggle ? nsfwToggle.checked : false;
     const payload = {
       type: 'start',
       prompt,
