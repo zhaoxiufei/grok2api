@@ -12,6 +12,8 @@
   const lengthSelect = document.getElementById('lengthSelect');
   const resolutionSelect = document.getElementById('resolutionSelect');
   const presetSelect = document.getElementById('presetSelect');
+  const genCountSelect = document.getElementById('genCountSelect');
+  const concurrentSelect = document.getElementById('concurrentSelect');
   const statusText = document.getElementById('statusText');
   const progressBar = document.getElementById('progressBar');
   const progressFill = document.getElementById('progressFill');
@@ -21,6 +23,8 @@
   const lengthValue = document.getElementById('lengthValue');
   const resolutionValue = document.getElementById('resolutionValue');
   const presetValue = document.getElementById('presetValue');
+  const countValue = document.getElementById('countValue');
+  const activeValue = document.getElementById('activeValue');
   const videoEmpty = document.getElementById('videoEmpty');
   const videoWaterfall = document.getElementById('videoWaterfall');
   const batchDownloadBtn = document.getElementById('batchDownloadBtn');
@@ -35,22 +39,25 @@
   const videoLightboxNext = document.getElementById('videoLightboxNext');
   const floatingActions = document.getElementById('floatingActions');
 
-  let currentSource = null;
-  let currentTaskId = '';
   let isRunning = false;
-  let progressBuffer = '';
-  let contentBuffer = '';
-  let collectingContent = false;
-  let startAt = 0;
   let fileDataUrl = '';
   let elapsedTimer = null;
-  let lastProgress = 0;
-  let currentWaterfallItem = null;
   let videoSequence = 0;
   let isSelectionMode = false;
   let selectedVideos = new Set();
   let currentLightboxIndex = -1;
   const DEFAULT_REASONING_EFFORT = 'low';
+
+  // ============ 批量生成状态 ============
+  let targetCount = 1;
+  let concurrentMax = 1;
+  let launchedCount = 0;
+  let completedCount = 0;
+  let shouldStop = false;
+  let batchStartAt = 0;
+  let consecutiveErrors = 0;
+  let activeWorkers = new Map();
+  let workerIdCounter = 0;
 
   function toast(message, type) {
     if (typeof showToast === 'function') {
@@ -81,12 +88,15 @@
 
   function updateProgress(value) {
     const safe = Math.max(0, Math.min(100, Number(value) || 0));
-    lastProgress = safe;
     if (progressFill) {
       progressFill.style.width = `${safe}%`;
     }
     if (progressText) {
-      progressText.textContent = `${safe}%`;
+      if (targetCount > 1) {
+        progressText.textContent = `${completedCount}/${targetCount}`;
+      } else {
+        progressText.textContent = `${safe}%`;
+      }
     }
   }
 
@@ -103,6 +113,24 @@
     if (presetValue && presetSelect) {
       presetValue.textContent = presetSelect.value;
     }
+    updateCountDisplay();
+    updateActiveDisplay();
+  }
+
+  function updateCountDisplay() {
+    if (countValue) {
+      if (targetCount > 1 || completedCount > 0) {
+        countValue.textContent = `${completedCount} / ${targetCount}`;
+      } else {
+        countValue.textContent = '-';
+      }
+    }
+  }
+
+  function updateActiveDisplay() {
+    if (activeValue) {
+      activeValue.textContent = activeWorkers.size > 0 ? String(activeWorkers.size) : '-';
+    }
   }
 
   function updateItemProgress(item, value) {
@@ -114,13 +142,6 @@
   }
 
   function resetOutput(keepPreview) {
-    progressBuffer = '';
-    contentBuffer = '';
-    collectingContent = false;
-    lastProgress = 0;
-    currentWaterfallItem = null;
-    updateProgress(0);
-    setIndeterminate(false);
     if (!keepPreview) {
       if (videoWaterfall) {
         videoWaterfall.innerHTML = '';
@@ -134,10 +155,12 @@
     if (durationValue) {
       durationValue.textContent = t('video.elapsedTimeNone');
     }
+    updateCountDisplay();
+    updateActiveDisplay();
   }
 
   function initWaterfallSlot() {
-    if (!videoWaterfall) return;
+    if (!videoWaterfall) return null;
     videoSequence += 1;
 
     const item = document.createElement('div');
@@ -145,12 +168,10 @@
     item.dataset.index = String(videoSequence);
     item.dataset.url = '';
 
-    // 选择框
     const checkbox = document.createElement('div');
     checkbox.className = 'video-checkbox';
     item.appendChild(checkbox);
 
-    // 进度条覆盖层
     const progressOverlay = document.createElement('div');
     progressOverlay.className = 'video-progress-overlay';
     const progressFillEl = document.createElement('div');
@@ -158,13 +179,11 @@
     progressOverlay.appendChild(progressFillEl);
     item.appendChild(progressOverlay);
 
-    // 占位区
     const placeholder = document.createElement('div');
     placeholder.className = 'video-placeholder';
     placeholder.textContent = t('video.generatingPlaceholder');
     item.appendChild(placeholder);
 
-    // 底部元数据
     const meta = document.createElement('div');
     meta.className = 'waterfall-meta';
 
@@ -188,34 +207,25 @@
     meta.appendChild(metaRight);
     item.appendChild(meta);
 
-    // 记录开始时间
     item.dataset.startTime = String(Date.now());
 
     videoWaterfall.prepend(item);
-    currentWaterfallItem = item;
 
     if (videoEmpty) {
       videoEmpty.style.display = 'none';
     }
 
-    // 选择模式同步
     if (isSelectionMode) {
       item.classList.add('selection-mode');
     }
-  }
 
-  function ensureWaterfallSlot() {
-    if (!currentWaterfallItem) {
-      initWaterfallSlot();
-    }
-    return currentWaterfallItem;
+    return item;
   }
 
   function updateWaterfallItemDone(item, url) {
     if (!item) return;
     item.dataset.url = url || '';
 
-    // 状态徽章
     const badge = item.querySelector('.image-status');
     if (badge) {
       badge.classList.remove('running');
@@ -223,13 +233,33 @@
       badge.textContent = t('common.done');
     }
 
-    // 移除进度条覆盖层
     const overlay = item.querySelector('.video-progress-overlay');
     if (overlay) {
       overlay.remove();
     }
 
-    // 更新耗时
+    const startTime = parseInt(item.dataset.startTime, 10);
+    if (startTime) {
+      const elapsed = Math.round((Date.now() - startTime) / 1000);
+      const timeSpan = item.querySelector('.waterfall-time');
+      if (timeSpan) {
+        timeSpan.textContent = `${elapsed}s`;
+      }
+    }
+  }
+
+  function markItemError(item) {
+    if (!item) return;
+    const badge = item.querySelector('.image-status');
+    if (badge) {
+      badge.classList.remove('running');
+      badge.classList.add('error');
+      badge.textContent = t('common.failed');
+    }
+    const overlay = item.querySelector('.video-progress-overlay');
+    if (overlay) {
+      overlay.remove();
+    }
     const startTime = parseInt(item.dataset.startTime, 10);
     if (startTime) {
       const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -253,8 +283,8 @@
     stopElapsedTimer();
     if (!durationValue) return;
     elapsedTimer = setInterval(() => {
-      if (!startAt) return;
-      const seconds = Math.max(0, Math.round((Date.now() - startAt) / 1000));
+      if (!batchStartAt) return;
+      const seconds = Math.max(0, Math.round((Date.now() - batchStartAt) / 1000));
       durationValue.textContent = t('video.elapsedTime', { sec: seconds });
     }, 1000);
   }
@@ -344,6 +374,8 @@
     }
   }
 
+  // ============ 视频提取与渲染 ============
+
   function extractVideoInfo(buffer) {
     if (!buffer) return null;
     if (buffer.includes('<video')) {
@@ -367,16 +399,16 @@
     return null;
   }
 
-  function renderVideoFromHtml(html) {
-    const container = ensureWaterfallSlot();
-    if (!container) return;
-    const placeholder = container.querySelector('.video-placeholder');
-    if (placeholder) {
-      // 解析 HTML 提取视频地址
+  function renderVideoInItem(item, info) {
+    if (!item || !info) return;
+    const placeholder = item.querySelector('.video-placeholder');
+    if (!placeholder) return;
+
+    let videoUrl = '';
+    if (info.html) {
       const tmp = document.createElement('div');
-      tmp.innerHTML = html;
+      tmp.innerHTML = info.html;
       const srcVideo = tmp.querySelector('video');
-      let videoUrl = '';
       if (srcVideo) {
         const source = srcVideo.querySelector('source');
         if (source && source.getAttribute('src')) {
@@ -385,116 +417,309 @@
           videoUrl = srcVideo.getAttribute('src');
         }
       }
-
-      const videoEl = document.createElement('video');
-      videoEl.controls = true;
-      videoEl.preload = 'metadata';
-      if (videoUrl) {
-        videoEl.src = videoUrl;
-      }
-      placeholder.replaceWith(videoEl);
-      updateWaterfallItemDone(container, videoUrl);
+    } else if (info.url) {
+      videoUrl = info.url;
     }
+
+    const videoEl = document.createElement('video');
+    videoEl.controls = true;
+    videoEl.preload = 'metadata';
+    if (videoUrl) {
+      videoEl.src = videoUrl;
+    }
+    placeholder.replaceWith(videoEl);
+    updateWaterfallItemDone(item, videoUrl);
   }
 
-  function renderVideoFromUrl(url) {
-    const container = ensureWaterfallSlot();
-    if (!container) return;
-    const safeUrl = url || '';
-    const placeholder = container.querySelector('.video-placeholder');
-    if (placeholder) {
-      const videoEl = document.createElement('video');
-      videoEl.controls = true;
-      videoEl.preload = 'metadata';
-      videoEl.src = safeUrl;
-      placeholder.replaceWith(videoEl);
-      updateWaterfallItemDone(container, safeUrl);
-    }
-  }
+  // ============ Worker Delta 处理 ============
 
-  function handleDelta(text) {
-    if (!text) return;
+  function handleWorkerDelta(worker, text) {
+    if (!text || !worker) return;
     if (text.includes('<think>') || text.includes('</think>')) {
       return;
     }
     if (text.includes('超分辨率') || text.includes('super resolution')) {
-      setStatus('connecting', t('video.superResolutionInProgress'));
-      setIndeterminate(true);
-      if (progressText) {
-        progressText.textContent = t('video.superResolutionInProgress');
+      const badge = worker.waterfallItem && worker.waterfallItem.querySelector('.image-status');
+      if (badge) {
+        badge.textContent = t('video.superResolutionInProgress');
       }
       return;
     }
 
-    if (!collectingContent) {
+    if (!worker.collectingContent) {
       const maybeVideo = text.includes('<video') || text.includes('[video](') || text.includes('http://') || text.includes('https://');
       if (maybeVideo) {
-        collectingContent = true;
+        worker.collectingContent = true;
       }
     }
 
-    if (collectingContent) {
-      contentBuffer += text;
-      const info = extractVideoInfo(contentBuffer);
+    if (worker.collectingContent) {
+      worker.contentBuffer += text;
+      const info = extractVideoInfo(worker.contentBuffer);
       if (info) {
-        if (info.html) {
-          renderVideoFromHtml(info.html);
-        } else if (info.url) {
-          renderVideoFromUrl(info.url);
-        }
+        renderVideoInItem(worker.waterfallItem, info);
       }
       return;
     }
 
-    progressBuffer += text;
-    const roundMatches = [...progressBuffer.matchAll(/\[round=(\d+)\/(\d+)\]\s*progress=([0-9]+(?:\.[0-9]+)?)%/g)];
+    worker.progressBuffer += text;
+    const roundMatches = [...worker.progressBuffer.matchAll(/\[round=(\d+)\/(\d+)\]\s*progress=([0-9]+(?:\.[0-9]+)?)%/g)];
     if (roundMatches.length) {
       const last = roundMatches[roundMatches.length - 1];
       const round = parseInt(last[1], 10);
       const total = parseInt(last[2], 10);
       const value = parseFloat(last[3]);
-      setIndeterminate(false);
-      updateProgress(value);
-      updateItemProgress(currentWaterfallItem, value);
-      if (progressText && Number.isFinite(round) && Number.isFinite(total) && total > 0) {
-        progressText.textContent = `${Math.round(value)}% · ${round}/${total}`;
+      worker.lastProgress = value;
+      updateItemProgress(worker.waterfallItem, value);
+      // 单并发时更新全局进度条
+      if (concurrentMax === 1) {
+        setIndeterminate(false);
+        if (progressFill) progressFill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+        if (progressText) {
+          if (targetCount > 1) {
+            progressText.textContent = `${Math.round(value)}% · ${completedCount + 1}/${targetCount}`;
+          } else {
+            progressText.textContent = `${Math.round(value)}% · ${round}/${total}`;
+          }
+        }
       }
-      progressBuffer = progressBuffer.slice(Math.max(0, progressBuffer.length - 300));
+      worker.progressBuffer = worker.progressBuffer.slice(Math.max(0, worker.progressBuffer.length - 300));
       return;
     }
 
-    const genericProgressMatches = [...progressBuffer.matchAll(/progress=([0-9]+(?:\.[0-9]+)?)%/g)];
+    const genericProgressMatches = [...worker.progressBuffer.matchAll(/progress=([0-9]+(?:\.[0-9]+)?)%/g)];
     if (genericProgressMatches.length) {
       const last = genericProgressMatches[genericProgressMatches.length - 1];
       const value = parseFloat(last[1]);
-      setIndeterminate(false);
-      updateProgress(value);
-      updateItemProgress(currentWaterfallItem, value);
-      progressBuffer = progressBuffer.slice(Math.max(0, progressBuffer.length - 240));
+      worker.lastProgress = value;
+      updateItemProgress(worker.waterfallItem, value);
+      if (concurrentMax === 1) {
+        setIndeterminate(false);
+        if (progressFill) progressFill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+      }
+      worker.progressBuffer = worker.progressBuffer.slice(Math.max(0, worker.progressBuffer.length - 240));
       return;
     }
 
-    const matches = [...progressBuffer.matchAll(/进度\s*(\d+)%/g)];
+    const matches = [...worker.progressBuffer.matchAll(/进度\s*(\d+)%/g)];
     if (matches.length) {
       const last = matches[matches.length - 1];
       const value = parseInt(last[1], 10);
-      setIndeterminate(false);
-      updateProgress(value);
-      updateItemProgress(currentWaterfallItem, value);
-      progressBuffer = progressBuffer.slice(Math.max(0, progressBuffer.length - 200));
+      worker.lastProgress = value;
+      updateItemProgress(worker.waterfallItem, value);
+      if (concurrentMax === 1) {
+        setIndeterminate(false);
+        if (progressFill) progressFill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+      }
+      worker.progressBuffer = worker.progressBuffer.slice(Math.max(0, worker.progressBuffer.length - 200));
     }
   }
 
-  function closeSource() {
-    if (currentSource) {
-      try {
-        currentSource.close();
-      } catch (e) {
-        // ignore
-      }
-      currentSource = null;
+  // ============ Worker 池核心逻辑 ============
+
+  function closeWorkerSource(worker) {
+    if (worker && worker.source) {
+      try { worker.source.close(); } catch (e) { /* ignore */ }
+      worker.source = null;
     }
   }
+
+  async function spawnWorker(videoIndex, authHeader) {
+    const workerId = ++workerIdCounter;
+    const worker = {
+      id: workerId,
+      source: null,
+      taskId: '',
+      waterfallItem: null,
+      finished: false,
+      progressBuffer: '',
+      contentBuffer: '',
+      collectingContent: false,
+      lastProgress: 0,
+      startAt: Date.now()
+    };
+    activeWorkers.set(workerId, worker);
+    updateActiveDisplay();
+
+    // 创建瀑布流卡片
+    const item = initWaterfallSlot();
+    worker.waterfallItem = item;
+
+    // 创建任务
+    let taskId = '';
+    try {
+      taskId = await createVideoTask(authHeader);
+    } catch (e) {
+      markItemError(worker.waterfallItem);
+      finishWorker(workerId, true, authHeader);
+      return;
+    }
+
+    // 检查是否在等待期间被停止
+    if (shouldStop || !activeWorkers.has(workerId)) {
+      markItemError(worker.waterfallItem);
+      activeWorkers.delete(workerId);
+      updateActiveDisplay();
+      checkBatchDone();
+      return;
+    }
+
+    worker.taskId = taskId;
+    setStatus('connected', t('video.generatingN', { done: completedCount, total: targetCount }));
+
+    // 打开 SSE 连接
+    const rawPublicKey = normalizeAuthHeader(authHeader);
+    const url = buildSseUrl(taskId, rawPublicKey);
+    const es = new EventSource(url);
+    worker.source = es;
+
+    es.onmessage = (event) => {
+      if (!event || !event.data) return;
+      if (event.data === '[DONE]') {
+        finishWorker(workerId, false, authHeader);
+        return;
+      }
+      let payload = null;
+      try { payload = JSON.parse(event.data); } catch (e) { return; }
+      if (payload && payload.error) {
+        toast(payload.error, 'error');
+        finishWorker(workerId, true, authHeader);
+        return;
+      }
+      const choice = payload.choices && payload.choices[0];
+      const delta = choice && choice.delta ? choice.delta : null;
+      if (delta && delta.content) {
+        handleWorkerDelta(worker, delta.content);
+      }
+      if (choice && choice.finish_reason === 'stop') {
+        finishWorker(workerId, false, authHeader);
+      }
+    };
+
+    es.onerror = () => {
+      if (!isRunning) return;
+      finishWorker(workerId, true, authHeader);
+    };
+  }
+
+  function finishWorker(workerId, hasError, authHeader) {
+    const worker = activeWorkers.get(workerId);
+    if (!worker || worker.finished) return;
+    worker.finished = true;
+
+    closeWorkerSource(worker);
+    activeWorkers.delete(workerId);
+    updateActiveDisplay();
+
+    if (hasError) {
+      markItemError(worker.waterfallItem);
+      consecutiveErrors++;
+    } else {
+      updateItemProgress(worker.waterfallItem, 100);
+      // 如果视频还没渲染（contentBuffer 中有内容但未触发渲染），尝试最终渲染
+      if (worker.contentBuffer) {
+        const info = extractVideoInfo(worker.contentBuffer);
+        if (info && worker.waterfallItem && worker.waterfallItem.querySelector('.video-placeholder')) {
+          renderVideoInItem(worker.waterfallItem, info);
+        }
+      }
+      if (worker.waterfallItem && !worker.waterfallItem.dataset.url) {
+        updateWaterfallItemDone(worker.waterfallItem, '');
+      }
+      consecutiveErrors = 0;
+    }
+
+    completedCount++;
+    updateCountDisplay();
+
+    // 单并发时更新全局进度
+    if (concurrentMax === 1) {
+      if (!hasError) {
+        setIndeterminate(false);
+        updateProgress(100);
+      }
+    } else {
+      if (progressText) {
+        progressText.textContent = `${completedCount}/${targetCount}`;
+      }
+    }
+
+    setStatus('connected', t('video.generatingN', { done: completedCount, total: targetCount }));
+
+    // 检查是否应该停止
+    if (shouldStop) {
+      checkBatchDone();
+      return;
+    }
+    if (consecutiveErrors >= 3) {
+      toast(t('video.tooManyErrors'), 'error');
+      shouldStop = true;
+      checkBatchDone();
+      return;
+    }
+
+    // 启动下一个 worker
+    if (launchedCount < targetCount) {
+      const delay = hasError ? 3000 : 1000;
+      setTimeout(() => {
+        if (shouldStop || !isRunning) {
+          checkBatchDone();
+          return;
+        }
+        launchedCount++;
+        spawnWorker(launchedCount, authHeader);
+      }, delay);
+    } else {
+      checkBatchDone();
+    }
+  }
+
+  function checkBatchDone() {
+    if (activeWorkers.size === 0) {
+      finishBatch();
+    }
+  }
+
+  function launchWorkers(authHeader) {
+    const toSpawn = Math.min(concurrentMax, targetCount - launchedCount);
+    for (let i = 0; i < toSpawn; i++) {
+      launchedCount++;
+      spawnWorker(launchedCount, authHeader);
+    }
+  }
+
+  function finishBatch() {
+    // 关闭所有残留连接
+    for (const [, worker] of activeWorkers) {
+      closeWorkerSource(worker);
+    }
+    activeWorkers.clear();
+    isRunning = false;
+    setButtons(false);
+    stopElapsedTimer();
+    updateActiveDisplay();
+
+    if (completedCount >= targetCount) {
+      setStatus('connected', t('video.batchComplete', { done: completedCount, total: targetCount }));
+      if (targetCount > 1) {
+        toast(t('video.genCountReached', { count: completedCount }), 'success');
+      }
+    } else {
+      setStatus('', t('video.batchStopped', { done: completedCount, total: targetCount }));
+    }
+
+    setIndeterminate(false);
+    if (completedCount > 0 && concurrentMax === 1) {
+      updateProgress(100);
+    }
+
+    if (durationValue && batchStartAt) {
+      const seconds = Math.max(0, Math.round((Date.now() - batchStartAt) / 1000));
+      durationValue.textContent = t('video.elapsedTime', { sec: seconds });
+    }
+  }
+
+  // ============ 连接控制 ============
 
   async function startConnection() {
     const prompt = promptInput ? promptInput.value.trim() : '';
@@ -515,118 +740,73 @@
       return;
     }
 
+    // 读取批量参数
+    targetCount = genCountSelect ? parseInt(genCountSelect.value, 10) || 1 : 1;
+    concurrentMax = concurrentSelect ? parseInt(concurrentSelect.value, 10) || 1 : 1;
+    launchedCount = 0;
+    completedCount = 0;
+    shouldStop = false;
+    consecutiveErrors = 0;
+    workerIdCounter = 0;
+    activeWorkers.clear();
+
     isRunning = true;
     startBtn.disabled = true;
+    batchStartAt = Date.now();
     updateMeta();
     resetOutput(true);
-    initWaterfallSlot();
     setStatus('connecting', t('common.connecting'));
-
-    let taskId = '';
-    try {
-      taskId = await createVideoTask(authHeader);
-    } catch (e) {
-      setStatus('error', t('common.createTaskFailed'));
-      startBtn.disabled = false;
-      isRunning = false;
-      return;
-    }
-
-    currentTaskId = taskId;
-    startAt = Date.now();
-    setStatus('connected', t('common.generating'));
     setButtons(true);
     setIndeterminate(true);
     startElapsedTimer();
 
-    const rawPublicKey = normalizeAuthHeader(authHeader);
-    const url = buildSseUrl(taskId, rawPublicKey);
-    closeSource();
-    const es = new EventSource(url);
-    currentSource = es;
+    if (concurrentMax > 1) {
+      // 多并发：全局进度条保持 indeterminate
+      if (progressText) {
+        progressText.textContent = `0/${targetCount}`;
+      }
+    } else {
+      updateProgress(0);
+    }
 
-    es.onopen = () => {
-      setStatus('connected', t('common.generating'));
-    };
-
-    es.onmessage = (event) => {
-      if (!event || !event.data) return;
-      if (event.data === '[DONE]') {
-        finishRun();
-        return;
-      }
-      let payload = null;
-      try {
-        payload = JSON.parse(event.data);
-      } catch (e) {
-        return;
-      }
-      if (payload && payload.error) {
-        toast(payload.error, 'error');
-        setStatus('error', t('common.generationFailed'));
-        finishRun(true);
-        return;
-      }
-      const choice = payload.choices && payload.choices[0];
-      const delta = choice && choice.delta ? choice.delta : null;
-      if (delta && delta.content) {
-        handleDelta(delta.content);
-      }
-      if (choice && choice.finish_reason === 'stop') {
-        finishRun();
-      }
-    };
-
-    es.onerror = () => {
-      if (!isRunning) return;
-      setStatus('error', t('common.connectionError'));
-      finishRun(true);
-    };
+    // 启动 worker 池
+    launchWorkers(authHeader);
   }
 
   async function stopConnection() {
+    shouldStop = true;
     const authHeader = await ensureFunctionKey();
-    if (authHeader !== null) {
-      await stopVideoTask(currentTaskId, authHeader);
-    }
-    closeSource();
-    isRunning = false;
-    currentTaskId = '';
-    stopElapsedTimer();
-    setButtons(false);
-    setStatus('', t('common.notConnected'));
-  }
 
-  function finishRun(hasError) {
-    if (!isRunning) return;
-    closeSource();
-    isRunning = false;
-    setButtons(false);
-    stopElapsedTimer();
-    if (!hasError) {
-      setStatus('connected', t('common.done'));
-      setIndeterminate(false);
-      updateProgress(100);
-      updateItemProgress(currentWaterfallItem, 100);
-    } else {
-      // 错误时标记当前卡片
-      if (currentWaterfallItem) {
-        const badge = currentWaterfallItem.querySelector('.image-status');
-        if (badge) {
-          badge.classList.remove('running');
-          badge.classList.add('error');
-          badge.textContent = t('common.failed');
-        }
-        const overlay = currentWaterfallItem.querySelector('.video-progress-overlay');
-        if (overlay) {
-          overlay.remove();
-        }
+    // 停止所有活跃 worker
+    const taskIds = [];
+    for (const [, worker] of activeWorkers) {
+      closeWorkerSource(worker);
+      if (worker.taskId) {
+        taskIds.push(worker.taskId);
+      }
+      if (!worker.finished) {
+        markItemError(worker.waterfallItem);
       }
     }
-    if (durationValue && startAt) {
-      const seconds = Math.max(0, Math.round((Date.now() - startAt) / 1000));
-      durationValue.textContent = t('video.elapsedTime', { sec: seconds });
+
+    // 批量停止后端任务
+    if (authHeader !== null && taskIds.length > 0) {
+      try {
+        await fetch('/v1/function/video/stop', {
+          method: 'POST',
+          headers: {
+            ...buildAuthHeaders(authHeader),
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ task_ids: taskIds })
+        });
+      } catch (e) {
+        // ignore
+      }
     }
+
+    activeWorkers.clear();
+    finishBatch();
   }
 
   // ============ 灯箱功能 ============
@@ -718,7 +898,6 @@
     });
   }
 
-  // 键盘支持
   document.addEventListener('keydown', (e) => {
     if (!videoLightbox || !videoLightbox.classList.contains('active')) return;
     if (e.key === 'Escape') {
@@ -782,7 +961,6 @@
     if (selectedCountBadge) {
       selectedCountBadge.textContent = String(selectedVideos.size);
     }
-    // 更新全选按钮文本
     const completed = getCompletedVideoItems();
     if (toggleSelectAllBtn) {
       if (completed.length > 0 && selectedVideos.size >= completed.length) {
@@ -796,11 +974,9 @@
   function toggleSelectAll() {
     const completed = getCompletedVideoItems();
     if (completed.length > 0 && selectedVideos.size >= completed.length) {
-      // 取消全选
       selectedVideos.clear();
       completed.forEach(item => item.classList.remove('selected'));
     } else {
-      // 全选
       completed.forEach(item => {
         const index = item.dataset.index;
         if (index) {
@@ -893,7 +1069,12 @@
   }
 
   if (clearBtn) {
-    clearBtn.addEventListener('click', () => resetOutput());
+    clearBtn.addEventListener('click', () => {
+      if (isRunning) {
+        stopConnection();
+      }
+      resetOutput();
+    });
   }
 
   if (batchDownloadBtn) {
@@ -917,7 +1098,6 @@
       const item = target.closest('.video-waterfall-item');
       if (!item) return;
 
-      // 点击 video 控件不触发
       if (target.tagName === 'VIDEO') return;
 
       if (isSelectionMode) {
@@ -925,7 +1105,6 @@
         return;
       }
 
-      // 正常模式：点击已完成卡片打开灯箱
       if (item.dataset.url) {
         const completed = getCompletedVideoItems();
         const idx = completed.indexOf(item);
@@ -947,7 +1126,6 @@
     let hasMoved = false;
 
     floatingActions.addEventListener('pointerdown', (e) => {
-      // 不拦截按钮上的点击
       if (e.target.closest('button') || e.target.closest('select') || e.target.closest('input')) return;
       isDragging = true;
       hasMoved = false;
@@ -1046,3 +1224,4 @@
 
   updateMeta();
 })();
+
