@@ -3,11 +3,11 @@
   const stopBtn = document.getElementById('stopBtn');
   const clearBtn = document.getElementById('clearBtn');
   const promptInput = document.getElementById('promptInput');
-  const imageUrlInput = document.getElementById('imageUrlInput');
+  const imageUrlInput = null; // removed, kept for compat
   const imageFileInput = document.getElementById('imageFileInput');
-  const imageFileName = document.getElementById('imageFileName');
-  const clearImageFileBtn = document.getElementById('clearImageFileBtn');
-  const selectImageFileBtn = document.getElementById('selectImageFileBtn');
+  const refUploadArea = document.getElementById('refUploadArea');
+  const refUploadPlaceholder = document.getElementById('refUploadPlaceholder');
+  const refPreviewGrid = document.getElementById('refPreviewGrid');
   const ratioSelect = document.getElementById('ratioSelect');
   const lengthSelect = document.getElementById('lengthSelect');
   const resolutionSelect = document.getElementById('resolutionSelect');
@@ -135,9 +135,10 @@
 
   function updateItemProgress(item, value) {
     if (!item) return;
-    const fill = item.querySelector('.video-progress-fill');
-    if (fill) {
-      fill.style.width = `${Math.max(0, Math.min(100, value))}%`;
+    const safe = Math.max(0, Math.min(100, Math.round(value)));
+    const placeholder = item.querySelector('.video-placeholder');
+    if (placeholder) {
+      placeholder.textContent = `${safe}%`;
     }
   }
 
@@ -172,16 +173,9 @@
     checkbox.className = 'video-checkbox';
     item.appendChild(checkbox);
 
-    const progressOverlay = document.createElement('div');
-    progressOverlay.className = 'video-progress-overlay';
-    const progressFillEl = document.createElement('div');
-    progressFillEl.className = 'video-progress-fill';
-    progressOverlay.appendChild(progressFillEl);
-    item.appendChild(progressOverlay);
-
     const placeholder = document.createElement('div');
     placeholder.className = 'video-placeholder';
-    placeholder.textContent = t('video.generatingPlaceholder');
+    placeholder.textContent = '0%';
     item.appendChild(placeholder);
 
     const meta = document.createElement('div');
@@ -233,11 +227,6 @@
       badge.textContent = t('common.done');
     }
 
-    const overlay = item.querySelector('.video-progress-overlay');
-    if (overlay) {
-      overlay.remove();
-    }
-
     const startTime = parseInt(item.dataset.startTime, 10);
     if (startTime) {
       const elapsed = Math.round((Date.now() - startTime) / 1000);
@@ -255,10 +244,6 @@
       badge.classList.remove('running');
       badge.classList.add('error');
       badge.textContent = t('common.failed');
-    }
-    const overlay = item.querySelector('.video-progress-overlay');
-    if (overlay) {
-      overlay.remove();
     }
     const startTime = parseInt(item.dataset.startTime, 10);
     if (startTime) {
@@ -301,8 +286,11 @@
     if (imageFileInput) {
       imageFileInput.value = '';
     }
-    if (imageFileName) {
-      imageFileName.textContent = t('common.noFileSelected');
+    if (refPreviewGrid) {
+      refPreviewGrid.innerHTML = '';
+    }
+    if (refUploadPlaceholder) {
+      refUploadPlaceholder.style.display = '';
     }
   }
 
@@ -328,12 +316,7 @@
 
   async function createVideoTask(authHeader) {
     const prompt = promptInput ? promptInput.value.trim() : '';
-    const rawUrl = imageUrlInput ? imageUrlInput.value.trim() : '';
-    if (fileDataUrl && rawUrl) {
-      toast(t('video.referenceConflict'), 'error');
-      throw new Error('invalid_reference');
-    }
-    const imageUrl = fileDataUrl || rawUrl;
+    const imageUrl = fileDataUrl || '';
     const res = await fetch('/v1/function/video/start', {
       method: 'POST',
       headers: {
@@ -424,11 +407,65 @@
     const videoEl = document.createElement('video');
     videoEl.controls = true;
     videoEl.preload = 'metadata';
+    videoEl.muted = true;
+    videoEl.loop = true;
+    videoEl.playsInline = true;
     if (videoUrl) {
       videoEl.src = videoUrl;
     }
+
+    // 播放图标覆盖层
+    const playOverlay = document.createElement('div');
+    playOverlay.className = 'video-play-overlay';
+    playOverlay.innerHTML = '<svg viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+    // 鼠标移入播放，移出暂停
+    videoEl.addEventListener('mouseenter', () => {
+      item.classList.add('playing');
+      videoEl.play().catch(() => {});
+    });
+    videoEl.addEventListener('mouseleave', () => {
+      item.classList.remove('playing');
+      videoEl.pause();
+      videoEl.currentTime = 0;
+    });
+
     placeholder.replaceWith(videoEl);
+    item.insertBefore(playOverlay, item.querySelector('.waterfall-meta'));
     updateWaterfallItemDone(item, videoUrl);
+
+    if (videoUrl) {
+      const dlBtn = document.createElement('button');
+      dlBtn.className = 'video-download-btn';
+      dlBtn.title = t('video.downloadSingle');
+      dlBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>';
+      dlBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        downloadSingleVideo(videoUrl, item.dataset.index);
+      });
+      const metaRight = item.querySelector('.meta-right');
+      if (metaRight) metaRight.appendChild(dlBtn);
+    }
+  }
+
+  // ============ 单个视频下载 ============
+
+  async function downloadSingleVideo(url, index) {
+    try {
+      const resp = await fetch(url, { mode: 'cors' });
+      if (!resp.ok) throw new Error();
+      const blob = await resp.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `grok_video_${index || Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch {
+      toast(t('video.downloadFailed'), 'error');
+    }
   }
 
   // ============ Worker Delta 处理 ============
@@ -754,7 +791,7 @@
     startBtn.disabled = true;
     batchStartAt = Date.now();
     updateMeta();
-    resetOutput(true);
+    resetOutput();
     setStatus('connecting', t('common.connecting'));
     setButtons(true);
     setIndeterminate(true);
@@ -1098,7 +1135,7 @@
       const item = target.closest('.video-waterfall-item');
       if (!item) return;
 
-      if (target.tagName === 'VIDEO') return;
+      if (target.tagName === 'VIDEO' || target.closest('.video-download-btn')) return;
 
       if (isSelectionMode) {
         toggleVideoSelection(item);
@@ -1161,7 +1198,70 @@
     });
   }
 
-  // ============ 文件与快捷键 ============
+  // ============ 参考图上传（拖拽 + 点击 + 预览） ============
+
+  function renderRefPreview() {
+    if (!refPreviewGrid) return;
+    refPreviewGrid.innerHTML = '';
+    if (!fileDataUrl) {
+      if (refUploadPlaceholder) refUploadPlaceholder.style.display = '';
+      return;
+    }
+    if (refUploadPlaceholder) refUploadPlaceholder.style.display = 'none';
+    const item = document.createElement('div');
+    item.className = 'ref-preview-item';
+    const img = document.createElement('img');
+    img.src = fileDataUrl;
+    img.alt = 'ref';
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'ref-preview-remove';
+    removeBtn.textContent = '×';
+    removeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearFileSelection();
+    });
+    item.appendChild(img);
+    item.appendChild(removeBtn);
+    refPreviewGrid.appendChild(item);
+  }
+
+  function handleRefFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        fileDataUrl = reader.result;
+        renderRefPreview();
+      } else {
+        fileDataUrl = '';
+        toast(t('common.fileReadFailed'), 'error');
+      }
+    };
+    reader.onerror = () => {
+      fileDataUrl = '';
+      toast(t('common.fileReadFailed'), 'error');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  if (refUploadArea) {
+    refUploadArea.addEventListener('click', () => {
+      if (imageFileInput) imageFileInput.click();
+    });
+    refUploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      refUploadArea.classList.add('drag-over');
+    });
+    refUploadArea.addEventListener('dragleave', () => {
+      refUploadArea.classList.remove('drag-over');
+    });
+    refUploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      refUploadArea.classList.remove('drag-over');
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file) handleRefFile(file);
+    });
+  }
 
   if (imageFileInput) {
     imageFileInput.addEventListener('change', () => {
@@ -1170,46 +1270,7 @@
         clearFileSelection();
         return;
       }
-      if (imageUrlInput && imageUrlInput.value.trim()) {
-        imageUrlInput.value = '';
-      }
-      if (imageFileName) {
-        imageFileName.textContent = file.name;
-      }
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (typeof reader.result === 'string') {
-          fileDataUrl = reader.result;
-        } else {
-          fileDataUrl = '';
-          toast(t('common.fileReadFailed'), 'error');
-        }
-      };
-      reader.onerror = () => {
-        fileDataUrl = '';
-        toast(t('common.fileReadFailed'), 'error');
-      };
-      reader.readAsDataURL(file);
-    });
-  }
-
-  if (selectImageFileBtn && imageFileInput) {
-    selectImageFileBtn.addEventListener('click', () => {
-      imageFileInput.click();
-    });
-  }
-
-  if (clearImageFileBtn) {
-    clearImageFileBtn.addEventListener('click', () => {
-      clearFileSelection();
-    });
-  }
-
-  if (imageUrlInput) {
-    imageUrlInput.addEventListener('input', () => {
-      if (imageUrlInput.value.trim() && fileDataUrl) {
-        clearFileSelection();
-      }
+      handleRefFile(file);
     });
   }
 
@@ -1220,6 +1281,29 @@
         startConnection();
       }
     });
+  }
+
+  // 生成数量 >= 并发数量 联动校验
+  function clampConcurrentToGenCount() {
+    if (!genCountSelect || !concurrentSelect) return;
+    const genCount = parseInt(genCountSelect.value, 10) || 1;
+    const concurrent = parseInt(concurrentSelect.value, 10) || 1;
+    if (concurrent > genCount) {
+      // 选择 <= genCount 的最大可用选项
+      const options = Array.from(concurrentSelect.options);
+      let best = options[0];
+      for (const opt of options) {
+        if (parseInt(opt.value, 10) <= genCount) best = opt;
+      }
+      concurrentSelect.value = best.value;
+    }
+  }
+
+  if (genCountSelect) {
+    genCountSelect.addEventListener('change', clampConcurrentToGenCount);
+  }
+  if (concurrentSelect) {
+    concurrentSelect.addEventListener('change', clampConcurrentToGenCount);
   }
 
   updateMeta();
