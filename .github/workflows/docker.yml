@@ -29,9 +29,9 @@ jobs:
           # AMD64 平台
           - platform: linux/amd64
             suffix: amd64
-          # ARM64 平台
-#          - platform: linux/arm64
-#            suffix: arm64
+#           ARM64 平台
+          - platform: linux/arm64
+            suffix: arm64
 
     steps:
       - name: Checkout repository
