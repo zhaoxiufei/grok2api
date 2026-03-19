@@ -2,7 +2,7 @@
   const modelChip = document.getElementById('modelChip');
   const modelLabel = document.getElementById('modelLabel');
   const modelDropdown = document.getElementById('modelDropdown');
-  let modelValue = 'grok-4.20-beta';
+  let modelValue = 'grok-4.1-fast';
   let modelList = [];
   const tempRange = document.getElementById('tempRange');
   const tempValue = document.getElementById('tempValue');
@@ -989,7 +989,7 @@
       try {
         const authHeader = await ensureFunctionKey();
         headers = { ...headers, ...buildAuthHeaders(authHeader) };
-      } catch (e) {}
+      } catch (e) { }
 
       try {
         const res = await fetch(CHAT_COMPLETIONS_ENDPOINT, {
@@ -1348,7 +1348,7 @@
   async function loadModels() {
     if (!modelDropdown) return;
     const fallback = ['grok-4.1-fast', 'grok-4', 'grok-3', 'grok-3-mini', 'grok-3-thinking', 'grok-4.20-beta', 'grok-imagine-1.0-fast'];
-    const preferred = 'grok-4.20-beta';
+    const preferred = 'grok-4.1-fast';
     try {
       const res = await fetch('/v1/models', { cache: 'no-store' });
       if (!res.ok) throw new Error('models fetch failed');
@@ -1650,68 +1650,68 @@
     let assistantText = '';
 
     try {
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const parts = buffer.split('\n\n');
-      buffer = parts.pop() || '';
-      for (const part of parts) {
-        const lines = part.split('\n');
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith('data:')) continue;
-          const payload = trimmed.slice(5).trim();
-          if (!payload) continue;
-          if (payload === '[DONE]') {
-            updateMessage(assistantEntry, assistantText, true);
-            if (assistantEntry.hasThink) {
-              const elapsed = assistantEntry.thinkElapsed || Math.max(1, Math.round((Date.now() - assistantEntry.startedAt) / 1000));
-              updateThinkSummary(assistantEntry, elapsed);
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed.startsWith('data:')) continue;
+            const payload = trimmed.slice(5).trim();
+            if (!payload) continue;
+            if (payload === '[DONE]') {
+              updateMessage(assistantEntry, assistantText, true);
+              if (assistantEntry.hasThink) {
+                const elapsed = assistantEntry.thinkElapsed || Math.max(1, Math.round((Date.now() - assistantEntry.startedAt) / 1000));
+                updateThinkSummary(assistantEntry, elapsed);
+              }
+              assistantEntry.committed = true;
+              commitToSession(targetSessionId, assistantText);
+              return;
             }
-            assistantEntry.committed = true;
-            commitToSession(targetSessionId, assistantText);
-            return;
-          }
-          try {
-            const json = JSON.parse(payload);
-            const delta = json && json.choices && json.choices[0] && json.choices[0].delta
-              ? json.choices[0].delta.content
-              : '';
-            if (delta) {
-              assistantText += delta;
-              if (!assistantEntry.firstTokenAt) {
-                assistantEntry.firstTokenAt = Date.now();
-              }
-              if (!assistantEntry.hasThink && assistantText.includes('<think>')) {
-                assistantEntry.hasThink = true;
-                assistantEntry.thinkStartAt = Date.now();
-                assistantEntry.thinkElapsed = null;
-                updateThinkSummary(assistantEntry, null);
-              }
-              if (assistantEntry.hasThink && assistantEntry.thinkStartAt && assistantEntry.thinkElapsed === null) {
-                if (assistantText.includes('</think>')) {
-                  assistantEntry.thinkElapsed = Math.max(1, Math.round((Date.now() - assistantEntry.thinkStartAt) / 1000));
-                  updateThinkSummary(assistantEntry, assistantEntry.thinkElapsed);
+            try {
+              const json = JSON.parse(payload);
+              const delta = json && json.choices && json.choices[0] && json.choices[0].delta
+                ? json.choices[0].delta.content
+                : '';
+              if (delta) {
+                assistantText += delta;
+                if (!assistantEntry.firstTokenAt) {
+                  assistantEntry.firstTokenAt = Date.now();
+                }
+                if (!assistantEntry.hasThink && assistantText.includes('<think>')) {
+                  assistantEntry.hasThink = true;
+                  assistantEntry.thinkStartAt = Date.now();
+                  assistantEntry.thinkElapsed = null;
+                  updateThinkSummary(assistantEntry, null);
+                }
+                if (assistantEntry.hasThink && assistantEntry.thinkStartAt && assistantEntry.thinkElapsed === null) {
+                  if (assistantText.includes('</think>')) {
+                    assistantEntry.thinkElapsed = Math.max(1, Math.round((Date.now() - assistantEntry.thinkStartAt) / 1000));
+                    updateThinkSummary(assistantEntry, assistantEntry.thinkElapsed);
+                  }
+                }
+                if (sessionsData.activeId === targetSessionId) {
+                  updateMessage(assistantEntry, assistantText, false);
                 }
               }
-              if (sessionsData.activeId === targetSessionId) {
-                updateMessage(assistantEntry, assistantText, false);
-              }
+            } catch (e) {
+              // ignore parse errors
             }
-          } catch (e) {
-            // ignore parse errors
           }
         }
       }
-    }
-    updateMessage(assistantEntry, assistantText, true);
-    if (assistantEntry.hasThink) {
-      const elapsed = assistantEntry.thinkElapsed || Math.max(1, Math.round((Date.now() - assistantEntry.startedAt) / 1000));
-      updateThinkSummary(assistantEntry, elapsed);
-    }
-    assistantEntry.committed = true;
-    commitToSession(targetSessionId, assistantText);
+      updateMessage(assistantEntry, assistantText, true);
+      if (assistantEntry.hasThink) {
+        const elapsed = assistantEntry.thinkElapsed || Math.max(1, Math.round((Date.now() - assistantEntry.startedAt) / 1000));
+        updateThinkSummary(assistantEntry, elapsed);
+      }
+      assistantEntry.committed = true;
+      commitToSession(targetSessionId, assistantText);
     } finally {
       activeStreamInfo = null;
     }
@@ -1730,7 +1730,7 @@
     try {
       const raw = localStorage.getItem(SIDEBAR_STATE_KEY);
       setSidebarCollapsed(raw === '1');
-    } catch (e) {}
+    } catch (e) { }
   }
 
   function bindEvents() {
